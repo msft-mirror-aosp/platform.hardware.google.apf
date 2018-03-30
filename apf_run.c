@@ -50,20 +50,13 @@ int parse_hex(char* input, uint8_t** output) {
     return length;
 }
 
-void print_hex(uint8_t* input, int len) {
-    for (int i = 0; i < len; ++i) {
-        printf("%02x", input[i]);
-    }
-}
-
 int main(int argc, char* argv[]) {
-    if (argc < 3 || argc > 5) {
+    if (argc != 4) {
         fprintf(stderr,
-                "Usage: %s <program> <packet> [<data>] [<age>]\n"
+                "Usage: %s <program> <packet> <program age>\n"
                 "  program:     APF program, in hex\n"
                 "  packet:      Packet to run through program, in hex\n"
-                "  data:        Data memory contents, in hex\n",
-                "  age:         Age of program in seconds (default: 0)\n",
+                "  program age: Age of program in seconds.\n",
                 basename(argv[0]));
         exit(1);
     }
@@ -71,18 +64,10 @@ int main(int argc, char* argv[]) {
     uint32_t program_len = parse_hex(argv[1], &program);
     uint8_t* packet;
     uint32_t packet_len = parse_hex(argv[2], &packet);
-    uint8_t* data = NULL;
-    uint32_t data_len = argc > 3 ? parse_hex(argv[3], &data) : 0;
-    uint32_t filter_age = argc > 4 ? atoi(argv[4]) : 0;
+    uint32_t filter_age = atoi(argv[3]);
     int ret = accept_packet(program, program_len, packet, packet_len,
-                            data, data_len, filter_age);
+                            filter_age);
     printf("Packet %sed\n", ret ? "pass" : "dropp");
-    if (data) {
-        printf("Data: ");
-        print_hex(data, data_len);
-        printf("\n");
-        free(data);
-    }
     free(program);
     free(packet);
     return ret;
