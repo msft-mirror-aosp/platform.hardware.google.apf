@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
                 "Usage: %s <program> <packet> [<data>] [<age>]\n"
                 "  program:     APF program, in hex\n"
                 "  packet:      Packet to run through program, in hex\n"
-                "  data:        Data memory contents, in hex\n",
+                "  data:        Data memory contents, in hex\n"
                 "  age:         Age of program in seconds (default: 0)\n",
                 basename(argv[0]));
         exit(1);
