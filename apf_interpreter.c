@@ -42,7 +42,7 @@ int accept_packet(const uint8_t* program, uint32_t program_len,
 // Is access to offset |p| length |size| within data bounds?
 #define IN_DATA_BOUNDS(p, size) (ENFORCE_UNSIGNED(p) && \
                                  ENFORCE_UNSIGNED(size) && \
-                                 (p) + (size) < data_len && \
+                                 (p) + (size) <= data_len && \
                                  (p) + (size) >= (p))  // catch wraparounds
 // Accept packet if not within program bounds
 #define ASSERT_IN_PROGRAM_BOUNDS(p) ASSERT_RETURN(IN_PROGRAM_BOUNDS(p))
