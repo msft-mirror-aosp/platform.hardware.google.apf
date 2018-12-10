@@ -33,4 +33,9 @@ cc_binary_host {
         "apf_run.c",
         "apf_interpreter.c",
     ],
+    target: {
+        darwin: {
+            enabled: false,
+        },
+    },
 }
