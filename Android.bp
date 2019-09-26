@@ -26,7 +26,10 @@ cc_library_static {
 cc_binary_host {
     name: "apf_disassembler",
     defaults: ["apf_defaults"],
-    srcs: ["apf_disassembler.c"],
+    srcs: [
+        "apf_disassembler.c",
+        "disassembler.c",
+    ],
 }
 
 cc_binary_host {
@@ -38,6 +41,7 @@ cc_binary_host {
     srcs: [
         "apf_run.c",
         "apf_interpreter.c",
+        "disassembler.c",
     ],
     cflags: [
         "-DAPF_TRACE_HOOK=apf_trace_hook",
