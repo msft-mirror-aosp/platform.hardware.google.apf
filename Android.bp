@@ -7,6 +7,12 @@ cc_defaults {
         "-DAPF_FRAME_HEADER_SIZE=14",
         "-Wall",
         "-Werror",
+        "-Werror=implicit-fallthrough",
+        "-Wnullable-to-nonnull-conversion",
+        "-Wsign-compare",
+        "-Wthread-safety",
+        "-Wunused-parameter",
+        "-Wuninitialized",
     ],
 }
 
