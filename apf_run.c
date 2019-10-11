@@ -178,7 +178,7 @@ int main(int argc, char* argv[]) {
     char* packet = NULL;
     uint8_t* data = NULL;
     uint32_t data_len = 0;
-    int32_t filter_age = 0;
+    uint32_t filter_age = 0;
 
     int opt;
     char *endptr;
