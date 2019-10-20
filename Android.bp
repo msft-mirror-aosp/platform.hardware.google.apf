@@ -65,5 +65,8 @@ sh_test_host {
         darwin: {
             enabled: false,
         },
+        windows: {
+            enabled: false,
+        },
     },
 }
