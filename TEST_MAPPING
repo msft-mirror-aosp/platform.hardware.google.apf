@@ -1,7 +1,0 @@
-{
-    "postsubmit": [
-        { "name": "NetworkStackTests" },
-        { "name": "apf_run_test",
-          "host": true }
-    ]
-}

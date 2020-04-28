@@ -23,11 +23,10 @@
 // User hook for interpreter debug tracing.
 #ifdef APF_TRACE_HOOK
 extern void APF_TRACE_HOOK(uint32_t pc, const uint32_t* regs, const uint8_t* program,
-                           uint32_t program_len, const uint8_t *packet, uint32_t packet_len,
-                           const uint32_t* memory, uint32_t ram_len);
+                           const uint8_t* packet, const uint32_t* memory);
 #else
-#define APF_TRACE_HOOK(pc, regs, program, program_len, packet, packet_len, memory, memory_len) \
-    do { /* nop*/                                                                              \
+#define APF_TRACE_HOOK(pc, regs, program, packet, memory) \
+    do { /* nop*/                                         \
     } while (0)
 #endif
 
@@ -87,7 +86,7 @@ int accept_packet(uint8_t* program, uint32_t program_len, uint32_t ram_len,
   uint32_t instructions_remaining = program_len;
 
   do {
-      APF_TRACE_HOOK(pc, registers, program, program_len, packet, packet_len, memory, ram_len);
+      APF_TRACE_HOOK(pc, registers, program, packet, memory);
       if (pc == program_len) {
           return PASS_PACKET;
       } else if (pc == (program_len + 1)) {
