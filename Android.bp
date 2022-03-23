@@ -74,6 +74,7 @@ sh_test_host {
     name: "apf_run_test",
     src: "apf_run_test.sh",
     filename: "apf_run_test.sh",
+    test_suites: ["general-tests"],
     test_config: "apf_run_test.xml",
     data: ["testdata/*"],
     data_bins: ["apf_run"],
@@ -84,8 +85,5 @@ sh_test_host {
         windows: {
             enabled: false,
         },
-    },
-    test_options: {
-        unit_test: true,
     },
 }
