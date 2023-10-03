@@ -45,15 +45,22 @@ uint32_t apf_version();
 uint8_t* apf_allocate_buffer(uint32_t size);
 
 /**
- * Transmit the allocated buffer and deallocate the memory region.
+ * Transmits the allocated buffer and deallocate the memory region.
+ *
+ * The function is responsible to verify if the range [ptr, ptr + len) is within
+ * the buffer it allocated for the program when apf_transmit_buffer() is called.
+ *
+ * The content of the buffer between [ptr, ptr + len) is the transmit packet
+ * bytes, starting from the 802.3 header and not including any CRC bytes at the
+ * end.
  *
  * @param ptr pointer to the transmit buffer
  * @param len the length of buffer to be transmitted, 0 means don't transmit the
  *            buffer but only deallocate it
- * @param dscp the first 6 bits of the TOS field in the IPv4 header, the value
- *             will be 0 if the transmitted packet is IPv6 packet.
+ * @param dscp the first 6 bits of the TOS field in the IPv4 header or traffic
+ *             class field in the IPv6 header.
  */
-void apf_transmit_buffer(uint8_t *ptr, int len, int dscp);
+void apf_transmit_buffer(uint8_t *ptr, uint32_t len, uint8_t dscp);
 
 /**
  * Runs a packet filtering program over a packet.
