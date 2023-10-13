@@ -70,6 +70,7 @@ int apf_run(uint8_t* program, uint32_t program_len, uint32_t ram_len,
   // Memory slot values.
   uint32_t memory[MEMORY_ITEMS] = {};
   // Fill in pre-filled memory slot values.
+  memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = 0;
   memory[MEMORY_OFFSET_PROGRAM_SIZE] = program_len;
   memory[MEMORY_OFFSET_DATA_SIZE] = ram_len;
   memory[MEMORY_OFFSET_PACKET_SIZE] = packet_len;
@@ -280,9 +281,31 @@ int apf_run(uint8_t* program, uint32_t program_len, uint32_t ram_len,
                     REG = OTHER_REG;
                     break;
                   case ALLOC_EXT_OPCODE:
+                    ASSERT_RETURN(allocated_buffer == NULL);
                     allocate_buffer_len = REG;
                     allocated_buffer = apf_allocate_buffer(allocate_buffer_len);
                     ASSERT_RETURN(allocated_buffer != NULL);
+                    memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = 0;
+                    break;
+                  case TRANS_EXT_OPCODE:
+                    ASSERT_RETURN(allocated_buffer != NULL);
+                    uint32_t pkt_len =
+                        memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
+                    // If pkt_len > allocate_buffer_len, it means sth. wrong
+                    // happened and the allocated_buffer should be deallocated.
+                    if (pkt_len > allocate_buffer_len) {
+                        apf_transmit_buffer(
+                            allocated_buffer,
+                            0 /* len */,
+                            0 /* dscp */);
+                        return PASS_PACKET;
+                    }
+                    // TODO: calculate packet checksum and get dscp
+                    apf_transmit_buffer(
+                        allocated_buffer,
+                        pkt_len,
+                        0 /* dscp */);
+                    allocated_buffer = NULL;
                     break;
                   // Unknown extended opcode
                   default:
