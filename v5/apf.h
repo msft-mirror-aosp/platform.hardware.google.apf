@@ -165,6 +165,7 @@
 #define NEG_EXT_OPCODE 33  // Negate, e.g. "neg R0"
 #define SWAP_EXT_OPCODE 34 // Swap, e.g. "swap R0,R1"
 #define MOV_EXT_OPCODE 35  // Move, e.g. "move R0,R1"
+#define ALLOC_EXT_OPCODE 36 // Allocate buffer, "e.g. ALLOC R0"
 
 #define EXTRACT_OPCODE(i) (((i) >> 3) & 31)
 #define EXTRACT_REGISTER(i) ((i) & 1)
