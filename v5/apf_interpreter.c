@@ -16,6 +16,7 @@
 
 #include "apf_interpreter.h"
 
+// TODO: Remove the dependency of the standard library and make the interpreter self-contained.
 #include <string.h> // For memcmp
 
 #include "apf.h"
@@ -85,6 +86,11 @@ int apf_run(uint8_t* program, uint32_t program_len, uint32_t ram_len,
   // safety. Initialize to the number of bytes in the program which is an
   // upper bound on the number of instructions in the program.
   uint32_t instructions_remaining = program_len;
+
+  // The output buffer pointer
+  uint8_t* allocated_buffer = NULL;
+  // The length of the output buffer
+  uint32_t allocate_buffer_len = 0;
 
   do {
       APF_TRACE_HOOK(pc, registers, program, program_len, packet, packet_len, memory, ram_len);
@@ -272,6 +278,11 @@ int apf_run(uint8_t* program, uint32_t program_len, uint32_t ram_len,
                   }
                   case MOV_EXT_OPCODE:
                     REG = OTHER_REG;
+                    break;
+                  case ALLOC_EXT_OPCODE:
+                    allocate_buffer_len = REG;
+                    allocated_buffer = apf_allocate_buffer(allocate_buffer_len);
+                    ASSERT_RETURN(allocated_buffer != NULL);
                     break;
                   // Unknown extended opcode
                   default:
