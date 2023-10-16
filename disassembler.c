@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "apf.h"
+#include "v5/apf.h"
 
 // If "c" is of a signed type, generate a compile warning that gets promoted to an error.
 // This makes bounds checking simpler because ">= 0" can be avoided. Otherwise adding
@@ -341,6 +341,28 @@ uint32_t apf_disassemble(const uint8_t* program, uint32_t program_len,
                     ret = snprintf(output_buffer + offset,
                                    output_buffer_len - offset, "r%d, r%d",
                                    reg_num, reg_num ^ 1);
+                    ASSERT_RET_INBOUND(ret);
+                    offset += ret;
+                    break;
+                case ALLOC_EXT_OPCODE:
+                    ret = print_opcode("alloc", output_buffer,
+                                       output_buffer_len, offset);
+                    ASSERT_RET_INBOUND(ret);
+                    offset += ret;
+                    ret =
+                        snprintf(output_buffer + offset,
+                                 output_buffer_len - offset, "r%d", reg_num);
+                    ASSERT_RET_INBOUND(ret);
+                    offset += ret;
+                    break;
+                case TRANS_EXT_OPCODE:
+                    ret = print_opcode("trans", output_buffer,
+                                       output_buffer_len, offset);
+                    ASSERT_RET_INBOUND(ret);
+                    offset += ret;
+                    ret =
+                        snprintf(output_buffer + offset,
+                                 output_buffer_len - offset, "r%d", reg_num);
                     ASSERT_RET_INBOUND(ret);
                     offset += ret;
                     break;
