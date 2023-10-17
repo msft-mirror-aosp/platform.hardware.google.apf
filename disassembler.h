@@ -18,4 +18,6 @@
 
 #include <stdint.h>
 
-uint32_t apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t pc);
+uint32_t apf_disassemble(const uint8_t* program, uint32_t program_len,
+                         uint32_t pc, char* output_buffer,
+                         int output_buffer_len);
