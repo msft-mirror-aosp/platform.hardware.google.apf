@@ -85,12 +85,12 @@ uint8_t* apf_allocate_buffer(int size);
 int apf_transmit_buffer(uint8_t* ptr, int len, uint8_t dscp);
 
 /**
- * Runs a packet filtering program over a packet.
+ * Runs an APF program over a packet.
  *
- * The return value of the apf_run indicates whether the packet should be
- * passed to AP or not. As a part of apf_run execution, the packet filtering
+ * The return value of apf_run indicates whether the packet should
+ * be passed or dropped. As a part of apf_run execution, the APF
  * program can call apf_allocate_buffer()/apf_transmit_buffer() to construct
- * an egress packet to transmit it.
+ * a reply packet and transmit it.
  *
  * The text section containing the program instructions starts at address
  * program and stops at + program_len - 1, and the writable data section
@@ -101,24 +101,24 @@ int apf_transmit_buffer(uint8_t* ptr, int len, uint8_t dscp);
  *        |    text section    |      data section      |
  *        +--------------------+------------------------+
  *
- * @param program the program bytecode, followed by the writable data region.
- * @param program_len the length in bytes of the read-only portion of the APF
+ * @param program - the program bytecode, followed by the writable data region.
+ * @param program_len - the length in bytes of the read-only portion of the APF
  *                    buffer pointed to by {@code program}.
- * @param ram_len total length of the APF buffer pointed to by {@code program},
- *                including the read-only bytecode portion and the read-write
- *                data portion.
- * @param packet the packet bytes, starting from the 802.3 header and not
- *               including any CRC bytes at the end.
- * @param packet_len the length of {@code packet} in bytes.
- * @param filter_age the number of seconds since the filter was programmed.
+ * @param ram_len - total length of the APF buffer pointed to by
+ *                  {@code program}, including the read-only bytecode
+ *                  portion and the read-write data portion.
+ * @param packet - the packet bytes, starting from the ethernet header.
+ * @param packet_len - the length of {@code packet} in bytes, not
+ *                     including trailers/CRC.
+ * @param filter_age_16384ths - the number of 1/16384 seconds since the filter
+ *                     was programmed.
  *
- * @return non-zero if packet should be passed to AP, zero if
- *         packet should be dropped. Return 1 indicating the packet is accepted
- *         without error. Negative return values are reserved for error code.
+ * @return non-zero if packet should be passed, zero if packet should
+ *                  be dropped.
  */
-int apf_run(uint8_t* program, uint32_t program_len, uint32_t ram_len,
-                  const uint8_t* packet, uint32_t packet_len,
-                  uint32_t filter_age);
+int apf_run(uint8_t* const program, const uint32_t program_len,
+            const uint32_t ram_len, const uint8_t* const packet,
+            const uint32_t packet_len, const uint32_t filter_age_16384ths);
 
 #ifdef __cplusplus
 }
