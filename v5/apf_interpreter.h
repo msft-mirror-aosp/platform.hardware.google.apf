@@ -24,8 +24,8 @@ extern "C" {
 #endif
 
 /**
- * Version of APF instruction set processed by apf_run().
- * Should be returned by wifi_get_packet_filter_info.
+ * Returns the max version of the APF instruction set supported by apf_run().
+ * APFv6 is a superset of APFv4. APFv6 interpreters are able to run APFv4 code.
  */
 uint32_t apf_version();
 
