@@ -29,7 +29,7 @@ uint8_t apf_test_tx_dscp;
  *
  * Clean up the apf_test_buffer and return the pointer to beginning of the buffer region.
  */
-uint8_t* apf_allocate_buffer(uint32_t size) {
+uint8_t* apf_allocate_buffer(int size) {
   if (size > APF_TX_BUFFER_SIZE) {
     return NULL;
   }
