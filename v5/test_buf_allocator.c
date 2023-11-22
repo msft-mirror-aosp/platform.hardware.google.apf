@@ -25,13 +25,6 @@ uint32_t apf_test_tx_packet_len;
 uint8_t apf_test_tx_dscp;
 
 /**
- * Test implementation of apf_version()
- */
-uint32_t apf_version() {
-  return 5;
-}
-
-/**
  * Test implementation of apf_allocate_buffer()
  *
  * Clean up the apf_test_buffer and return the pointer to beginning of the buffer region.
