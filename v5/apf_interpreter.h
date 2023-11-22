@@ -30,26 +30,28 @@ extern "C" {
 uint32_t apf_version();
 
 /**
- * Allocates a buffer for APF program to write the transmit packet.
+ * Allocates a buffer for the APF program to build a reply packet.
  *
- * The implementations must always support allocating at least one 1500 bytes
- * buffer until it is effectively transmitted. Before passing a memory region
- * back to the caller, the implementations must zero it out.
+ * Unless in a critical low memory state, the firmware must allow allocating at
+ * least one 1500 byte buffer for every call to apf_run(). The interpreter will
+ * have at most one active allocation at any given time, and will always either
+ * transmit or deallocate the buffer before apf_run() returns.
  *
- * The firmware is responsible for freeing everything that was allocated by APF.
- * It is OK if the firmware decides only to limit allocations to at most one
- * response packet for every packet received by APF. In other words, while
- * processing a single received packet, it is OK for apf_allocate_buffer() to
- * succeed only once and return NULL after that.
+ * It is OK if the firmware decides to limit allocations to at most one per
+ * apf_run() invocation.
  *
- * @param size the size of buffer to allocate, it should be the size of the
- *             packet to be transmitted.
- * @return the pointer to the allocated region. The function can return null to
- *         indicate the allocation failure due to not enough memory. This may
- *         happened if there are too many buffers allocated that have not been
- *         transmitted and deallocated yet.
+ * The firmware MAY choose to allocate a larger buffer than requested, and
+ * give the apf_interpreter a pointer to the middle of the buffer. This will
+ * allow firmware to later (during or after apf_transmit_buffer call) populate
+ * any required headers, trailers, etc.
+ *
+ * @param size - the minimum size of buffer to allocate
+ * @return the pointer to the allocated region. The function can return NULL to
+ *         indicate allocation failure, for example if too many buffers are
+ *         pending transmit. Returning NULL will immediately result in the
+ *         apf_run() returning PASS.
  */
-uint8_t* apf_allocate_buffer(uint32_t size);
+uint8_t* apf_allocate_buffer(int size);
 
 /**
  * Transmits the allocated buffer and deallocates the memory region.
