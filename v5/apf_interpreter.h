@@ -48,35 +48,41 @@ uint32_t apf_version();
  * @param size - the minimum size of buffer to allocate
  * @return the pointer to the allocated region. The function can return NULL to
  *         indicate allocation failure, for example if too many buffers are
- *         pending transmit. Returning NULL will immediately result in the
+ *         pending transmit. Returning NULL will most likely result in the
  *         apf_run() returning PASS.
  */
 uint8_t* apf_allocate_buffer(int size);
 
 /**
- * Transmits the allocated buffer and deallocates the memory region.
+ * Transmits the allocated buffer and deallocates it.
  *
- * The function is responsible to verify if the range [ptr, ptr + len) is within
- * the buffer it allocated for the program when apf_transmit_buffer() is called.
+ * The apf_interpreter will not read/write from/to the buffer once it calls
+ * this function.
  *
- * The content of the buffer between [ptr, ptr + len) is the transmit packet
- * bytes, starting from the 802.3 header and not including any CRC bytes at the
- * end.
- *
- * The firmware must guarantee the transmit packet is not modified after the APF
- * calls the apf_transmit_buffer().
+ * The content of the buffer between [ptr, ptr + len) are the bytes to be
+ * transmitted, starting from the ethernet header and not including any
+ * CRC bytes at the end.
  *
  * The firmware is expected to make its best effort to transmit. If it
  * exhausts retries, or if there is no channel for too long and the transmit
- * queue is full, then it is OK for the packet to be dropped.
+ * queue is full, then it is OK for the packet to be dropped. The firmware should
+ * prefer to fail allocation if transmit is likely to fail.
  *
- * @param ptr pointer to the transmit buffer
- * @param len the length of buffer to be transmitted, 0 means don't transmit the
- *            buffer but only deallocate it
- * @param dscp the first 6 bits of the TOS field in the IPv4 header or traffic
+ * apf_transmit_buffer() should be asynchronous, which means the actual packet
+ * transmission can happen sometime after the function returns.
+ *
+ * @param ptr - pointer to the transmit buffer, must have been previously
+ *             returned by apf_allocate_buffer and not deallocated.
+ * @param len - the number of bytes to be transmitted (possibly less than
+ *              the allocated buffer), 0 means don't transmit the buffer
+ *              but only deallocate it
+ * @param dscp - the upper 6 bits of the TOS field in the IPv4 header or traffic
  *             class field in the IPv6 header.
+ * @return non-zero if the firmware *knows* the transmit will fail, zero if
+ *         the firmware thinks the transmit will succeed. Returning an error
+ *         will likely result in apf_run() returning PASS.
  */
-void apf_transmit_buffer(uint8_t *ptr, uint32_t len, uint8_t dscp);
+int apf_transmit_buffer(uint8_t* ptr, int len, uint8_t dscp);
 
 /**
  * Runs a packet filtering program over a packet.
