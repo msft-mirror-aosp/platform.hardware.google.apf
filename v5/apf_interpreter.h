@@ -27,7 +27,7 @@ extern "C" {
  * Returns the max version of the APF instruction set supported by apf_run().
  * APFv6 is a superset of APFv4. APFv6 interpreters are able to run APFv4 code.
  */
-uint32_t apf_version();
+uint32_t apf_version(void);
 
 /**
  * Allocates a buffer for the APF program to build a reply packet.
@@ -52,7 +52,7 @@ uint32_t apf_version();
  *         pending transmit. Returning NULL will most likely result in the
  *         apf_run() returning PASS.
  */
-uint8_t* apf_allocate_buffer(void* ctx, int size);
+uint8_t* apf_allocate_buffer(void* ctx, uint32_t size);
 
 /**
  * Transmits the allocated buffer and deallocates it.
@@ -84,7 +84,7 @@ uint8_t* apf_allocate_buffer(void* ctx, int size);
  *         the firmware thinks the transmit will succeed. Returning an error
  *         will likely result in apf_run() returning PASS.
  */
-int apf_transmit_buffer(void* ctx, uint8_t* ptr, int len, uint8_t dscp);
+int apf_transmit_buffer(void* ctx, uint8_t* ptr, uint32_t len, uint8_t dscp);
 
 /**
  * Runs an APF program over a packet.
