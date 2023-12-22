@@ -154,7 +154,7 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                   offs += registers[1];
               }
               ASSERT_IN_PACKET_BOUNDS(offs);
-              uint32_t load_size;
+              uint32_t load_size = 0;
               switch (opcode) {
                   case LDB_OPCODE:
                   case LDBX_OPCODE:
