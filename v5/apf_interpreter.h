@@ -27,7 +27,7 @@ extern "C" {
  * Returns the max version of the APF instruction set supported by apf_run().
  * APFv6 is a superset of APFv4. APFv6 interpreters are able to run APFv4 code.
  */
-uint32_t apf_version();
+uint32_t apf_version(void);
 
 /**
  * Allocates a buffer for the APF program to build a reply packet.
@@ -99,9 +99,9 @@ int apf_transmit_buffer(void* ctx, uint8_t* ptr, uint32_t len, uint8_t dscp);
  * begins at program + program_len and ends at program + ram_len - 1,
  * as described in the following diagram:
  *
- *     program         program + program_len    program + ram_len
- *        |    text section    |      data section      |
- *        +--------------------+------------------------+
+ *     program         program + program_len    program + ram_len
+ *        |    text section    |      data section      |
+ *        +--------------------+------------------------+
  *
  * @param ctx - pointer to any additional context required for allocation and transmit.
                 may be null if no such context is required. this is opaque to
