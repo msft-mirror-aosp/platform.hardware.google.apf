@@ -48,7 +48,7 @@ fi
   echo -n '        final String referenceProgramHexString = "'
   head -n 1 apf2java.in | sed -r 's@^[^"]*"@@;s@"[^"]+$@@' | tr -d '\n'
   echo '";'
-  echo '        assertEquals(programString, referenceProgramHexString);'
+  echo '        assertEquals(referenceProgramHexString, programString);'
   echo '    }'
 } > apf2java.out
 
