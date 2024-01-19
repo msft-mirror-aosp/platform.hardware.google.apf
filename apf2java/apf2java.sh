@@ -21,7 +21,7 @@ sed -r \
 's@: ldhx +r([01]), \[r1\+([0-9]+)\]@: gen.addLoad16Indexed(R\1, \2);@;'\
 's@: ldwx +r([01]), \[r1\+([0-9]+)\]@: gen.addLoad32Indexed(R\1, \2);@;'\
 's@: ldm +r([01]), m\[([0-9]+)\]@: gen.addLoadFromMemory(R\1, \2);@;'\
-< apf-demo.txt > tmp
+< apf2java.in > tmp
 declare -ar LABELS=($(sed -rn 's@.*LABEL_([0-9]+).*@\1@p' < tmp | sort -u))
 for L in "${LABELS[@]}"; do
   #echo "[LABEL_${L}]"
@@ -46,10 +46,10 @@ fi
   echo '        byte[] program = gen.generate();'
   echo '        final String programString = toHexString(program).toLowerCase();'
   echo -n '        final String referenceProgramHexString = "'
-  head -n 1 apf-demo.txt | sed -r 's@^[^"]*"@@;s@"[^"]+$@@' | tr -d '\n'
+  head -n 1 apf2java.in | sed -r 's@^[^"]*"@@;s@"[^"]+$@@' | tr -d '\n'
   echo '";'
   echo '        assertEquals(programString, referenceProgramHexString);'
   echo '    }'
-} > apf-demo.out
+} > apf2java.out
 
 rm -f tmp tmp2
