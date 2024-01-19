@@ -5,7 +5,7 @@ sed -r \
 's@: add +r0, (-?[0-9]+)@: gen.addAdd(\1);@;'\
 's@: add +r0, r1@: gen.addAddR1();@;'\
 's@: jmp +(PASS|DROP)@: gen.addJump(\1_LABEL);@;'\
-'s@: jnebs +r0, 0x([0-9a-f]+), ([0-9]+), ([0-9a-f]+)@: gen.addJumpIfBytesAtR0NotEqual(ByteArrayFromHexString("\3"), LABEL_\2);@;'\
+'s@: jnebs +r0, 0x([0-9a-f]+), ([0-9]+), ([0-9a-f]+)@: gen.addJumpIfBytesAtR0NotEqual(hexStringToByteArray("\3"), LABEL_\2);@;'\
 's@: jeq +r([01]), 0x([0-9a-f]+), ([0-9]+)@: gen.addJumpIfR\1Equals(0x\2, LABEL_\3);@;'\
 's@: jne +r([01]), 0x([0-9a-f]+), ([0-9]+)@: gen.addJumpIfR\1NotEquals(0x\2, LABEL_\3);@;'\
 's@: jlt +r([01]), 0x([0-9a-f]+), ([0-9]+)@: gen.addJumpIfR\1LessThan(0x\2, LABEL_\3);@;'\
@@ -38,14 +38,18 @@ if [[ "$(egrep -v 'gen|^$|apf_disassembler' < tmp2 | wc -l)" != 0 ]]; then
 fi
 
 {
-  #echo '--- Code Auto Conversion follows ---'
-  echo 'gen = new ApfV4Generator(MIN_APF_VERSION);'
-  egrep -v apf_disassembler < tmp2
+  echo '    @Test'
+  echo '    public void testFullApfV4ProgramGeneration() throws IllegalInstructionException {'
+  echo '        ApfV4Generator gen = new ApfV4Generator(APF_VERSION_4);'
+  egrep -v apf_disassembler < tmp2 | sed -r 's@^(.+)$@        \1@'
   echo
-  echo 'byte[] program = gen.generate();'
-  echo -n 'assertEquals(program, ByteArrayFromHexString("'
+  echo '        byte[] program = gen.generate();'
+  echo '        final String programString = toHexString(program).toLowerCase();'
+  echo -n '        final String referenceProgramHexString = "'
   head -n 1 apf-demo.txt | sed -r 's@^[^"]*"@@;s@"[^"]+$@@' | tr -d '\n'
-  echo '"));'
+  echo '";'
+  echo '        assertEquals(programString, referenceProgramHexString);'
+  echo '    }'
 } > apf-demo.out
 
 rm -f tmp tmp2
