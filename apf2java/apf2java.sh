@@ -1,4 +1,10 @@
 #!/bin/bash
+set -e
+set -u
+
+# depends on 'm apf_disassembler'
+"${ANDROID_HOST_OUT}/bin/apf_disassembler" < apf2java.in > apf2java.txt
+
 sed -r \
 's@: li +r([01]), (-?[0-9]+)@: gen.addLoadImmediate(R\1, \2);@;'\
 's@: and +r0, (-?[0-9]+)@: gen.addAnd(\1);@;'\
@@ -21,7 +27,7 @@ sed -r \
 's@: ldhx +r([01]), \[r1\+([0-9]+)\]@: gen.addLoad16Indexed(R\1, \2);@;'\
 's@: ldwx +r([01]), \[r1\+([0-9]+)\]@: gen.addLoad32Indexed(R\1, \2);@;'\
 's@: ldm +r([01]), m\[([0-9]+)\]@: gen.addLoadFromMemory(R\1, \2);@;'\
-< apf2java.in > tmp
+< apf2java.txt > tmp
 declare -ar LABELS=($(sed -rn 's@.*LABEL_([0-9]+).*@\1@p' < tmp | sort -u))
 for L in "${LABELS[@]}"; do
   #echo "[LABEL_${L}]"
@@ -31,9 +37,9 @@ done
 sed -r 's@^ +[0-9]+: @@' < tmp > tmp2
 cat tmp2 > tmp
 sed -r 's@(LABEL_[0-9]+)@"\1"@' < tmp > tmp2
-if [[ "$(egrep -v 'gen|^$|apf_disassembler' < tmp2 | wc -l)" != 0 ]]; then
+if [[ "$(egrep -v '^$|gen' < tmp2 | wc -l)" != 0 ]]; then
   echo 'Failure to translate:'
-  egrep -v 'gen|^$|apf_disassembler' < tmp2
+  egrep -v '^$|gen' < tmp2
   exit 1
 fi
 
@@ -41,12 +47,12 @@ fi
   echo '    @Test'
   echo '    public void testFullApfV4ProgramGeneration() throws IllegalInstructionException {'
   echo '        ApfV4Generator gen = new ApfV4Generator(APF_VERSION_4);'
-  egrep -v apf_disassembler < tmp2 | sed -r 's@^(.+)$@        \1@'
+  sed -r 's@^(.+)$@        \1@' < tmp2
   echo
   echo '        byte[] program = gen.generate();'
   echo '        final String programString = toHexString(program).toLowerCase();'
   echo -n '        final String referenceProgramHexString = "'
-  head -n 1 apf2java.in | sed -r 's@^[^"]*"@@;s@"[^"]+$@@' | tr -d '\n'
+  tr -d '\n' < apf2java.in
   echo '";'
   echo '        assertEquals(referenceProgramHexString, programString);'
   echo '    }'
