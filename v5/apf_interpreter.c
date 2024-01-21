@@ -208,6 +208,188 @@ int match_name(const uint8_t* const target_names,
     return 0;
 }
 
+#define ETH_HEADER_LEN 14
+#define IPV4_HEADER_LEN 20
+#define IPV6_HEADER_LEN 40
+#define UDP_HEADER_LEN 8
+#define ICMP6_HEADER_LEN 4
+#define ETHER_TYPE_OFFSET 12
+#define TOS_FIELD_OFFSET 15
+#define IPV4_PROTOCOL_OFFSET 23
+#define IPV4_CHECKSUM_OFFSET 24
+#define IPV4_SRCIP_OFFSET 26
+#define IPV4_DSTIP_OFFSET 30
+#define IPV4_UDP_CHECKSUM_OFFSET 40
+#define IPV6_VERSION_OFFSET 14
+#define IPV6_PROTOCOL_OFFSET 20
+#define IPV6_SRCIP_OFFSET 22
+#define IPV6_DSTIP_OFFSET 38
+#define IPV6_UDP_CHECKSUM_OFFSET 60
+#define IPV6_ICMP6_CHECKSUM_OFFSET 56
+
+/**
+ * Calculate range sum of data word by word.
+ *
+ * @param data - pointer to the start of the data
+ * @param data_len  - length of the data
+ *
+ * @return the sum of data word by word
+ */
+static uint32_t range_sum_word(const uint8_t* const data,
+                               const uint32_t data_len) {
+    uint32_t sum = 0;
+    uint32_t i;
+    uint32_t data_prefix_len = data_len;
+    if (data_len % 2 != 0) {
+        sum += (uint16_t) (data[data_len - 1] << 8);
+        data_prefix_len--;
+    }
+    for (i = 0; i < data_prefix_len; i += 2) {
+        sum += (uint16_t) ((data[i] << 8) | data[i + 1]);
+    }
+    return sum;
+}
+
+/**
+ * Calculate the checksum from the range sum.
+ *
+ * @param range_sum - the range sum.
+ * @param is_udp - is checksum for udp
+ * @return  the checksum.
+ */
+static uint16_t calc_checksum_from_range_sum(uint32_t range_sum, int is_udp) {
+    while (range_sum >> 16) {
+        range_sum = (range_sum & 0xffff) + (range_sum >> 16);
+    }
+    uint16_t check_sum = ~range_sum;
+    if (check_sum == 0 && is_udp) {
+      check_sum = ~check_sum;
+    }
+    return check_sum;
+}
+
+/**
+ * Calculate the ipv4 header checksum
+ *
+ * @param ipv4_hdr - pointer to the start of the ipv4 header.
+ * @param hdr_len - length of ipv4_packet.
+ *
+ * @return the calculated checksum
+ */
+static uint16_t calculate_ipv4_header_checksum(const uint8_t* const ipv4_hdr,
+                                               const uint32_t hdr_len) {
+    uint32_t sum = range_sum_word(ipv4_hdr, hdr_len);
+    return calc_checksum_from_range_sum(sum, 0 /* is_udp */);
+}
+
+/**
+ * Calculate the layer 4 checksum
+ *
+ * @param transmit_pkt - pointer to the start of packet.
+ * @param transmit_pkt_len - the length of the transmit packet.
+ * @param is_ipv4 - if it is a ipv4 packet
+ *
+ * @return the calculated checksum
+ */
+static uint16_t calculate_layer4_checksum(const uint8_t* const transmit_pkt,
+                                          const uint32_t transmit_pkt_len,
+                                          const int is_ipv4) {
+    uint32_t sum = 0;
+    uint8_t protocol;
+    // pseudo header checksum
+    if (is_ipv4) {
+        sum += range_sum_word(transmit_pkt + IPV4_SRCIP_OFFSET, 4);
+        sum += range_sum_word(transmit_pkt + IPV4_DSTIP_OFFSET, 4);
+        protocol = transmit_pkt[IPV4_PROTOCOL_OFFSET];
+        sum += protocol;
+    } else {
+        sum += range_sum_word(transmit_pkt + IPV6_SRCIP_OFFSET, 16);
+        sum += range_sum_word(transmit_pkt + IPV6_DSTIP_OFFSET, 16);
+        protocol = transmit_pkt[IPV6_PROTOCOL_OFFSET];
+        sum += protocol;
+    }
+    const uint32_t ip_hdr_len = is_ipv4 ? IPV4_HEADER_LEN : IPV6_HEADER_LEN;
+    const uint8_t* layer4_hdr = transmit_pkt + ETH_HEADER_LEN + ip_hdr_len;
+    const uint16_t layer4_len = transmit_pkt_len - ETH_HEADER_LEN - ip_hdr_len;
+    sum += layer4_len;
+    sum += range_sum_word(layer4_hdr, layer4_len);
+    return calc_checksum_from_range_sum(sum, protocol == 0x11 /* is_udp */ );
+}
+
+/**
+ * Calculate the transmit packet checksum if necessary
+ *
+ * @param transmit_pkt - pointer to the start of the transmit packet.
+ * @param transmit_pkt_len - length of the transmit packet.
+ * @param dscp - the value holder for the dscp value.
+ *
+ * @return 1 if checksum calculate, 0 if no need to calculate checksum,
+ *         -1 if error occurs.
+ */
+int calculate_checksum_and_get_dscp(uint8_t* const transmit_pkt,
+                                    uint32_t transmit_pkt_len, uint8_t* dscp) {
+#define ASSERT_PKT_LEN(l) if (transmit_pkt_len < (l)) return -1
+    ASSERT_PKT_LEN(ETH_HEADER_LEN);
+    if (transmit_pkt[ETHER_TYPE_OFFSET] == 0x08
+        && transmit_pkt[ETHER_TYPE_OFFSET + 1] == 0x06) {
+        // For ARP packet, no need to calculate the checksum
+        return 0;
+    } else if (transmit_pkt[ETHER_TYPE_OFFSET] == 0x08
+               && transmit_pkt[ETHER_TYPE_OFFSET + 1] == 0x00) {
+        ASSERT_PKT_LEN(ETH_HEADER_LEN + IPV4_HEADER_LEN + UDP_HEADER_LEN);
+        // for IPv4, only support UDP packet
+        if (transmit_pkt[IPV4_PROTOCOL_OFFSET] != 0x11) {
+            return -1;
+        }
+        // get dscp
+        *dscp = (transmit_pkt[TOS_FIELD_OFFSET] >> 2) & 0x3f;
+        // calculate ipv4 checksum
+        const uint16_t ipv4_checksum = calculate_ipv4_header_checksum(
+            transmit_pkt + ETH_HEADER_LEN, IPV4_HEADER_LEN);
+        transmit_pkt[IPV4_CHECKSUM_OFFSET] =
+            (uint8_t) ((ipv4_checksum >> 8) & 0xff);
+        transmit_pkt[IPV4_CHECKSUM_OFFSET + 1] =
+            (uint8_t) (ipv4_checksum & 0xff);
+        const uint16_t layer4_checksum = calculate_layer4_checksum(
+            transmit_pkt, transmit_pkt_len, 1 /* is_ipv4 */
+        );
+        transmit_pkt[IPV4_UDP_CHECKSUM_OFFSET] =
+            (uint8_t) ((layer4_checksum >> 8) & 0xff);
+        transmit_pkt[IPV4_UDP_CHECKSUM_OFFSET + 1] =
+            (uint8_t) (layer4_checksum & 0xff);
+        return 1;
+    } else if (transmit_pkt[ETHER_TYPE_OFFSET] == 0x86
+               && transmit_pkt[ETHER_TYPE_OFFSET + 1] == 0xdd) {
+        ASSERT_PKT_LEN(ETH_HEADER_LEN + IPV6_HEADER_LEN);
+        if (transmit_pkt[IPV6_PROTOCOL_OFFSET] == 0x11) {
+            ASSERT_PKT_LEN(ETH_HEADER_LEN + IPV6_HEADER_LEN + UDP_HEADER_LEN);
+        } else if (transmit_pkt[IPV6_PROTOCOL_OFFSET] == 0x3a) {
+            ASSERT_PKT_LEN(ETH_HEADER_LEN + IPV6_HEADER_LEN + ICMP6_HEADER_LEN);
+        } else {
+             // only support udp and icmp6
+            return -1;
+        }
+        *dscp = ((transmit_pkt[IPV6_VERSION_OFFSET] & 0xf) << 2)
+            | (transmit_pkt[IPV6_VERSION_OFFSET + 1] >> 6 & 0x3);
+        const uint16_t layer4_checksum = calculate_layer4_checksum(
+            transmit_pkt, transmit_pkt_len, 0 /* is_ipv4 */
+        );
+        if (transmit_pkt[IPV6_PROTOCOL_OFFSET] == 0x11) {
+            transmit_pkt[IPV6_UDP_CHECKSUM_OFFSET] =
+                (uint8_t) ((layer4_checksum >> 8) & 0xff);
+            transmit_pkt[IPV6_UDP_CHECKSUM_OFFSET + 1] =
+                (uint8_t) (layer4_checksum & 0xff);
+        } else if (transmit_pkt[IPV6_PROTOCOL_OFFSET] == 0x3a) {
+            transmit_pkt[IPV6_ICMP6_CHECKSUM_OFFSET] =
+                (uint8_t) ((layer4_checksum >> 8) & 0xff);
+            transmit_pkt[IPV6_ICMP6_CHECKSUM_OFFSET + 1] =
+                (uint8_t) (layer4_checksum & 0xff);
+        }
+        return 1;
+    }
+    return -1;
+}
+
 #ifdef __cplusplus
 }
 #endif
