@@ -23,6 +23,14 @@
 
 #define TO_UPPER(a) ((a) >= 'a' && (a) <= 'z' ? ((a) - ('a' - 'A')) : (a))
 #define ASSERT_POINTER_IN_BOUND(p, l, r)  if ((p) < (l) || (p) >= (r)) return -1
+#define DECODE_BYTES(value, len, p, l, r)                     \
+    do {                                                      \
+        value = 0;                                            \
+        ASSERT_POINTER_IN_BOUND(((p) + (len) - 1), (l), (r)); \
+        uint32_t i;                                           \
+        for (i = 0; i < (len); i++)                           \
+            value = (value << 8) | *p++;                      \
+    } while (0)
 
 #ifdef __cplusplus
 extern "C" {
@@ -104,6 +112,100 @@ int match_labels(const uint8_t* const target_name,
         }
     }
     return -1;
+}
+
+
+
+ /**
+ * Checks if a DNS packet contains any of the target names with the provided
+ * question type.
+ *
+ * @param target_names - TLV encoded names to match against.
+ * @param remain_program_len - Remaining program length.
+ * @param udp_payload - Pointer to the start of the UDP payload (DNS header).
+ * @param udp_payload_len - Length of the UDP payload.
+ * @param question_type - Question type to match against. Use -1 to match answers.
+ *
+ *
+ * @return 1 if matched, 0 if not matched, -1 if an error occurs.
+ */
+int match_name(const uint8_t* const target_names,
+               const uint32_t remain_program_len,
+               const uint8_t* const udp_payload,
+               const uint32_t udp_payload_len,
+               const int question_type) {
+    const uint8_t* src = udp_payload;
+    uint32_t value;
+    // skip tid and flags
+    DECODE_BYTES(value, 4, src, udp_payload, udp_payload + udp_payload_len);
+    uint32_t num_questions;
+    DECODE_BYTES(num_questions, 2, src, udp_payload, udp_payload + udp_payload_len);
+
+    uint32_t num_answers = 0;
+    DECODE_BYTES(value, 2, src, udp_payload, udp_payload + udp_payload_len);
+    num_answers += value;
+    DECODE_BYTES(value, 2, src, udp_payload, udp_payload + udp_payload_len);
+    num_answers += value;
+    DECODE_BYTES(value, 2, src, udp_payload, udp_payload + udp_payload_len);
+    num_answers += value;
+
+    const uint8_t* q = target_names;
+    while (*q != 0) {
+        src = udp_payload + 12;
+        ASSERT_POINTER_IN_BOUND(src, udp_payload, udp_payload + udp_payload_len);
+        uint32_t j;
+        const uint32_t checked_label_size = (uint32_t) (q - target_names);
+        // match questions
+        for (j = 0; j < num_questions; ++j) {
+            int rst = match_labels(q, remain_program_len - checked_label_size,
+                                   udp_payload, udp_payload_len, &src);
+            if (rst == -1) {
+                return -1;
+            }
+            int qtype;
+            // read qtype
+            DECODE_BYTES(qtype, 2, src, udp_payload, udp_payload + udp_payload_len);
+            // skip qclass
+            DECODE_BYTES(value, 2, src, udp_payload, udp_payload + udp_payload_len);
+            if (rst != 1) {
+                continue;
+            }
+            if ((question_type != -1)
+                && (qtype == 0xff /* TYPE_ANY */ || qtype == question_type)) {
+                return 1;
+            }
+        }
+        // match answers
+        for (j = 0; j < num_answers; ++j) {
+            int rst = match_labels(q, remain_program_len - checked_label_size,
+                                   udp_payload, udp_payload_len, &src);
+            if (rst == -1) {
+                return -1;
+            }
+            // skip type, class, ttl
+            DECODE_BYTES(value, 8, src, udp_payload, udp_payload + udp_payload_len);
+            // decode rdata length
+            uint32_t len;
+            DECODE_BYTES(len, 2, src, udp_payload, udp_payload + udp_payload_len);
+            // skip rdata
+            src += len;
+            if (rst == 1) {
+                return rst;
+            }
+        }
+        // move the pointer to the next name.
+        while (*q != 0) {
+            uint32_t len = *q++;
+            if (len < 1 || len > 63) {
+                return -1;
+            }
+            q += len;
+            ASSERT_POINTER_IN_BOUND(q, target_names, target_names + remain_program_len);
+        }
+        q++;
+        ASSERT_POINTER_IN_BOUND(q, target_names, target_names + remain_program_len);
+    }
+    return 0;
 }
 
 #ifdef __cplusplus

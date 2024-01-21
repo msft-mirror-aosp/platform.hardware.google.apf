@@ -8,6 +8,9 @@ extern "C" {
 int match_labels(const uint8_t* const target_name,
                  const int target_name_max_len, const uint8_t* const udp_payload,
                  const int udp_payload_len, const uint8_t** src);
+int match_name(const uint8_t* const target_names, const int remain_program_len,
+               const uint8_t* const udp_payload, const int udp_payload_len,
+               const int question_type);
 
 #ifdef __cplusplus
 }
@@ -95,6 +98,81 @@ TEST(ApfInterpreterTest, MatchLabelWithinfIniteloop) {
   const int udp_payload_len = sizeof(udp_payload);
   const uint8_t* src = udp_payload + 27;
   EXPECT_EQ(match_labels(matched_target_name, matched_target_name_len, udp_payload, udp_payload_len, &src), -1);
+}
+
+TEST(ApfInterpreterTest, MatchQuetions) {
+  // target names = { A.B.LOCAL }
+  const uint8_t target_names1[] = {0x01, 0x41, 0x01, 0x42, 0x05, 0x4c,
+                                  0x4f, 0x43, 0x41, 0x4c, 0x00, 0x00};
+  const int target_names_len1 = sizeof(target_names1);
+  const uint8_t udp_payload[] = {
+      0x00, 0x00, 0x00, 0x00,// tid = 0x00, flags = 0x00,
+      0x00, 0x02,            // qdcount = 2
+      0x00, 0x00,            // ancount = 0
+      0x00, 0x00,            // nscount = 0
+      0x00, 0x00,            // arcount = 0
+      0x01, 0x61, 0x01, 0x62,// qname1 = a.b.local
+      0x05, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x00,
+      0x00, 0x01, 0x00, 0x01,// type=A, class=0x0001
+      0xc0, 0x0e,                  // qname2 = b.local (name compression)
+      0x00, 0x01, 0x00, 0x01};     // type=A, class=0x0001
+  const int udp_payload_len = sizeof(udp_payload);
+  EXPECT_EQ(match_name(target_names1, target_names_len1, udp_payload,
+                       udp_payload_len, 0x01), 1);
+
+  // target names = { A, B.LOCAL }
+  const uint8_t target_names2[] = {0x01, 0x41, 0x00, 0x01, 0x42, 0x05, 0x4c,
+                                     0x4f, 0x43, 0x41, 0x4c, 0x00, 0x00};
+  const int target_names_len2 = sizeof(target_names2);
+  EXPECT_EQ(match_name(target_names2, target_names_len2, udp_payload,
+                       udp_payload_len, 0x01), 1);
+
+  // target names = { C.LOCAL }
+  const uint8_t target_names3[] = {0x01, 0x43, 0x05, 0x4c, 0x4f,
+                                   0x43, 0x41, 0x4c, 0x00, 0x00};
+  const int target_names_len3 = sizeof(target_names2);
+  EXPECT_EQ(match_name(target_names3, target_names_len3, udp_payload,
+                       udp_payload_len, 0x01), 0);
+}
+
+TEST(ApfInterpreterTest, MatchAnswers) {
+    // target names = { A.B.LOCAL }
+    const uint8_t target_names1[] = {0x01, 0x41, 0x01, 0x42, 0x05, 0x4c,
+                                     0x4f, 0x43, 0x41, 0x4c, 0x00, 0x00};
+    const int target_names_len1 = sizeof(target_names1);
+    const uint8_t udp_payload[] = {
+        0x00, 0x00, 0x84, 0x00, // tid = 0x00, flags = 0x8400,
+        0x00, 0x00, // qdcount = 0
+        0x00, 0x02, // ancount = 2
+        0x00, 0x00, // nscount = 0
+        0x00, 0x00, // arcount = 0
+        0x01, 0x61, 0x01, 0x62, // qname1 = a.b.local
+        0x05, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x00,
+        0x00, 0x01, 0x80, 0x01, // type=A, class=0x8001
+        0x00, 0x00, 0x00, 0x78, // ttl = 120
+        0x00, 0x04, 0xc0, 0xa8, 0x01, 0x09, // rdlengh = 4, rdata=192.168.1.9
+        0xc0, 0x0e, // qname2 = b.local (name compression)
+        0x00, 0x01, 0x80, 0x01, // type=A, class=0x8001
+        0x00, 0x00, 0x00, 0x78, // ttl = 120
+        0x00, 0x04, 0xc0, 0xa8, 0x01, 0x09  // rdlengh = 4, rdata=192.168.1.9
+    };
+    const int udp_payload_len = sizeof(udp_payload);
+    EXPECT_EQ(match_name(target_names1, target_names_len1, udp_payload,
+                         udp_payload_len, -1), 1);
+
+    // target names = { A, B.LOCAL }
+    const uint8_t target_names2[] = {0x01, 0x41, 0x00, 0x01, 0x42, 0x05, 0x4c,
+                                     0x4f, 0x43, 0x41, 0x4c, 0x00, 0x00};
+    const int target_names_len2 = sizeof(target_names2);
+    EXPECT_EQ(match_name(target_names2, target_names_len2, udp_payload,
+                         udp_payload_len, -1), 1);
+
+    // target names = { C.LOCAL }
+    const uint8_t target_names3[] = {0x01, 0x43, 0x05, 0x4c, 0x4f,
+                                     0x43, 0x41, 0x4c, 0x00, 0x00};
+    const int target_names_len3 = sizeof(target_names2);
+    EXPECT_EQ(match_name(target_names3, target_names_len3, udp_payload,
+                         udp_payload_len, -1), 0);
 }
 
 }  // namespace apf
