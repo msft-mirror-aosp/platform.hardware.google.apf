@@ -14,6 +14,8 @@ int match_name(const uint8_t* const target_names, const int remain_program_len,
 int calculate_checksum_and_get_dscp(uint8_t* const transmit_pkt,
                                     uint32_t transmit_pkt_len, uint8_t* dscp);
 
+int calculate_checksum_and_get_dscp(uint8_t* const transmit_pkt,
+                                    uint32_t transmit_pkt_len, uint8_t* dscp);
 #ifdef __cplusplus
 }
 #endif
