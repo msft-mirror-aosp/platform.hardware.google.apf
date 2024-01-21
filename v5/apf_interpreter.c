@@ -21,6 +21,95 @@
 
 #include "apf.h"
 
+#define TO_UPPER(a) ((a) >= 'a' && (a) <= 'z' ? ((a) - ('a' - 'A')) : (a))
+#define ASSERT_POINTER_IN_BOUND(p, l, r)  if ((p) < (l) || (p) >= (r)) return -1
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Compares a QNAME/NAME label sequence at *src with the target_name.
+ *
+ * @param target_name - TLV encoded name to match against.
+ * @param target_name_max_len - Maximum possible length of the target_name.
+ * @param udp_payload - Pointer to the start of the UDP payload (DNS header).
+ * @param udp_payload_len - Length of the UDP payload.
+ * @param src - Pointer to the beginning of the label sequence.
+ *              Will be updated to point to the next position after the labels.
+ *
+ * @return 1 if matched, 0 if not matched, -1 if an error occurs.
+ */
+int match_labels(const uint8_t* const target_name,
+                 const uint32_t target_name_max_len,
+                 const uint8_t* const udp_payload,
+                 const uint32_t udp_payload_len,
+                 const uint8_t** src) {
+    const uint8_t* p = *src;
+    ASSERT_POINTER_IN_BOUND(p, udp_payload, udp_payload + udp_payload_len);
+    const uint8_t* q = target_name;
+    ASSERT_POINTER_IN_BOUND(q, target_name, target_name + target_name_max_len);
+    const uint8_t* next_pos = NULL;
+    if (*q == 0) {
+        // target name is empty.
+        return -1;
+    }
+    int is_qname_match = 1;// bool type is not supported in c89
+    uint32_t label_size;
+    uint32_t i;
+    // handling loop by limiting the maximum number of pointer traces.
+    for (i = 0; i < udp_payload_len; i += 2) {
+        ASSERT_POINTER_IN_BOUND(p, udp_payload, udp_payload + udp_payload_len);
+        // handling the message compression: rfc 1035 4.1.4.
+        if (*p >= 0xc0) {
+            if (next_pos == NULL) { next_pos = p + 2; }
+            ASSERT_POINTER_IN_BOUND(p + 1, udp_payload,
+                                    udp_payload + udp_payload_len);
+            uint32_t offset = (uint32_t) (((p[0] & 0x3f) << 8) | p[1]);
+            // checks the offset is inside the udp payloads.
+            if (offset > udp_payload_len) { return -1; }
+            // rfc 1035 4.1.4 does not mention forward jump is not allowed.
+            p = udp_payload + offset;
+        } else if (*p < 0 || *p > 63) {
+            // based on rfc 1035 2.3.4., label size is 63 octets or less.
+            return -1;
+        } else if (*p) {
+            label_size = *p++;
+            // checks labels inside the udp payloads.
+            if (p + label_size > udp_payload + udp_payload_len) { return -1; }
+            ASSERT_POINTER_IN_BOUND(q, target_name,
+                                    target_name + target_name_max_len);
+            if (is_qname_match && label_size == *q++) {
+                while (label_size--) {
+                    ASSERT_POINTER_IN_BOUND(p, udp_payload,
+                                            udp_payload + udp_payload_len);
+                    uint8_t pc = *p++;
+                    ASSERT_POINTER_IN_BOUND(q, target_name,
+                                            target_name + target_name_max_len);
+                    is_qname_match = is_qname_match && (TO_UPPER(pc) == *q++);
+                }
+            } else {
+                is_qname_match = 0;
+                p += label_size;
+            }
+        } else {
+            // reach the label end
+            if (next_pos == NULL) { next_pos = p + 1; }
+            ASSERT_POINTER_IN_BOUND(next_pos, udp_payload,
+                                    udp_payload + udp_payload_len);
+            *src = next_pos;
+            ASSERT_POINTER_IN_BOUND(q, target_name,
+                                    target_name + target_name_max_len);
+            return is_qname_match && *q == 0;
+        }
+    }
+    return -1;
+}
+
+#ifdef __cplusplus
+}
+#endif
+
 // User hook for interpreter debug tracing.
 #ifdef APF_TRACE_HOOK
 extern void APF_TRACE_HOOK(uint32_t pc, const uint32_t* regs, const uint8_t* program,
