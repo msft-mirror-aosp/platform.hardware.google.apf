@@ -419,7 +419,7 @@ extern void APF_TRACE_HOOK(uint32_t pc, const uint32_t* regs, const uint8_t* pro
 #define ENFORCE_UNSIGNED(c) ((c)==(uint32_t)(c))
 
 uint32_t apf_version(void) {
-    return 20231214;
+    return 20240123;
 }
 
 int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
@@ -486,6 +486,8 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
 // Decode the imm length.
 #define DECODE_IMM(value, length)                                              \
     do {                                                                       \
+        ASSERT_FORWARD_IN_PROGRAM(pc + length - 1);                            \
+        value = 0;                                                             \
         uint32_t i;                                                            \
         for (i = 0; i < (length) && pc < program_len; i++)                     \
             value = (value << 8) | program[pc++];                              \
@@ -676,7 +678,11 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                     break;
                   case ALLOC_EXT_OPCODE:
                     ASSERT_RETURN(allocated_buffer == NULL);
-                    allocated_buffer_len = REG;
+                    if (reg_num == 0) {
+                        allocated_buffer_len = REG;
+                    } else {
+                        DECODE_IMM(allocated_buffer_len, 2);
+                    }
                     allocated_buffer =
                         apf_allocate_buffer(ctx, allocated_buffer_len);
                     ASSERT_RETURN(allocated_buffer != NULL);
@@ -695,20 +701,46 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                             0 /* dscp */);
                         return PASS_PACKET;
                     }
-                    // TODO: calculate packet checksum and get dscp
+                    uint8_t dscp = 0;
+                    int chksum_rst = calculate_checksum_and_get_dscp(allocated_buffer,
+                                                              pkt_len, &dscp);
+                    // any error happened during checksum calculation
+                    if (chksum_rst == -1) {
+                        apf_transmit_buffer(ctx, allocated_buffer, 0 /* len */,
+                                            0 /* dscp */);
+                        return PASS_PACKET;
+                    }
                     apf_transmit_buffer(
                         ctx,
                         allocated_buffer,
                         pkt_len,
-                        0 /* dscp */);
+                        dscp);
                     allocated_buffer = NULL;
                     break;
-                  case DATA_EXT_OPCODE: {
-                    ASSERT_FORWARD_IN_PROGRAM(pc + 1);
-                    uint32_t skip_len = 0;
-                    DECODE_IMM(skip_len, 2);
-                    ASSERT_FORWARD_IN_PROGRAM(pc + skip_len - 1);
-                    pc += skip_len;
+                  case JDNSQMATCH_EXT_OPCODE: {
+                    const uint32_t imm_len = 1 << (len_field - 1);
+                    uint32_t jump_offs;
+                    DECODE_IMM(jump_offs, imm_len);
+                    int qtype;
+                    DECODE_IMM(qtype, 1);
+                    uint32_t udp_payload_offset = registers[0];
+                    int match_rst = match_name(&program[pc],
+                                         program_len - pc,
+                                         packet + udp_payload_offset,
+                                         packet_len - udp_payload_offset,
+                                         qtype);
+                    if (match_rst == -1) {
+                        return PASS_PACKET;
+                    }
+                    while (!(program[pc] == 0 && program[pc + 1] == 0)) {
+                        pc++;
+                    }
+                    pc += 2;
+                    if (reg_num == 0 && match_rst == 0) {
+                        pc += jump_offs;
+                    } else if (reg_num == 1 && match_rst == 1) {
+                        pc += jump_offs;
+                    }
                     break;
                   }
                   // Unknown extended opcode
@@ -750,11 +782,26 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
               }
               break;
           }
-          case MEMCOPY_OPCODE: {
+          case WRITE_OPCODE: {
               ASSERT_RETURN(allocated_buffer != NULL);
               ASSERT_RETURN(len_field > 0);
+              uint32_t offs = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
+              const uint32_t write_len = 1 << (len_field - 1);
+              ASSERT_RETURN(write_len > 0);
+              ASSERT_IN_OUTPUT_BOUNDS(offs, write_len);
+              uint32_t i;
+              for (i = 0; i < write_len; ++i) {
+                  *(allocated_buffer + offs) =
+                      (uint8_t) ((imm >> (write_len - 1 - i) * 8) & 0xff);
+                  offs++;
+              }
+              memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = offs;
+              break;
+          }
+          case MEMCOPY_OPCODE: {
+              ASSERT_RETURN(allocated_buffer != NULL);
               uint32_t src_offs = imm;
-              uint32_t copy_len = 0;
+              uint32_t copy_len;
               DECODE_IMM(copy_len, 1);
               uint32_t dst_offs = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
               ASSERT_IN_OUTPUT_BOUNDS(dst_offs, copy_len);
