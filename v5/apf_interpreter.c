@@ -801,7 +801,10 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                             0 /* dscp */);
                         return PASS_PACKET;
                     }
-                    int dscp = calculate_checksum_and_return_dscp(allocated_buffer, pkt_len);
+                    // allocated_buffer_len cannot be large because we'd run out of RAM,
+                    // so the above unsigned comparison effectively guarantees casting pkt_len
+                    // to a signed value does not result in it going negative.
+                    int dscp = calculate_checksum_and_return_dscp(allocated_buffer, (s32)pkt_len);
                     apf_transmit_buffer(ctx, allocated_buffer, pkt_len, dscp);
                     allocated_buffer = NULL;
                     break;
