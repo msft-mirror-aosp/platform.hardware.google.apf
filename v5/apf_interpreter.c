@@ -225,378 +225,273 @@
 #endif  // ANDROID_APF_APF_H
 /* End include of apf.h */
 
-#define TO_UPPER(a) ((a) >= 'a' && (a) <= 'z' ? ((a) - ('a' - 'A')) : (a))
-#define ASSERT_POINTER_IN_BOUND(p, l, r)  if ((p) < (l) || (p) >= (r)) return -1
-#define DECODE_BYTES(value, len, p, l, r)                     \
-    do {                                                      \
-        value = 0;                                            \
-        ASSERT_POINTER_IN_BOUND(((p) + (len) - 1), (l), (r)); \
-        uint32_t i;                                           \
-        for (i = 0; i < (len); i++)                           \
-            value = (value << 8) | *p++;                      \
-    } while (0)
+typedef enum { false, true } bool;
 
-#ifdef __cplusplus
-extern "C" {
+/* Begin include of apf_defs.h */
+typedef int8_t s8;
+typedef int16_t s16;
+typedef int32_t s32;
+
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+
+typedef enum {
+  error_program = -2,
+  error_packet = -1,
+  nomatch = false,
+  match = true,
+} match_result_type;
+
+#define ETH_P_IP	0x0800
+#define ETH_P_IPV6	0x86DD
+
+#ifndef IPPROTO_ICMP
+#define IPPROTO_ICMP	1
 #endif
 
+#ifndef IPPROTO_TCP
+#define IPPROTO_TCP	6
+#endif
+
+#ifndef IPPROTO_UDP
+#define IPPROTO_UDP	17
+#endif
+
+#ifndef IPPROTO_ICMPV6
+#define IPPROTO_ICMPV6	58
+#endif
+
+#define ETH_HLEN	14
+#define IPV4_HLEN	20
+#define IPV6_HLEN	40
+#define TCP_HLEN	20
+#define UDP_HLEN	8
+/* End include of apf_defs.h */
+/* Begin include of apf_utils.h */
+static u32 read_be16(const u8* buf) {
+    return buf[0] * 256u + buf[1];
+}
+
+static void store_be16(u8* const buf, const u16 v) {
+    buf[0] = (u8)(v >> 8);
+    buf[1] = (u8)v;
+}
+
+static u8 uppercase(u8 c) {
+    return (c >= 'a') && (c <= 'z') ? c - ('a' - 'A') : c;
+}
+/* End include of apf_utils.h */
+/* Begin include of apf_dns.h */
 /**
- * Compares a QNAME/NAME label sequence at *src with the target_name.
+ * Compares a (Q)NAME starting at udp[*ofs] with the target name.
  *
- * @param target_name - TLV encoded name to match against.
- * @param target_name_max_len - Maximum possible length of the target_name.
- * @param udp_payload - Pointer to the start of the UDP payload (DNS header).
- * @param udp_payload_len - Length of the UDP payload.
- * @param src - Pointer to the beginning of the label sequence.
- *              Will be updated to point to the next position after the labels.
+ * @param needle - non-NULL - pointer to DNS encoded target name to match against.
+ *   example: [11]_googlecast[4]_tcp[5]local[0]  (where [11] is a byte with value 11)
+ * @param needle_bound - non-NULL - points at first invalid byte past needle.
+ * @param udp - non-NULL - pointer to the start of the UDP payload (DNS header).
+ * @param udp_len - length of the UDP payload.
+ * @param ofs - non-NULL - pointer to the offset of the beginning of the (Q)NAME.
+ *   On non-error return will be updated to point to the first unread offset,
+ *   ie. the next position after the (Q)NAME.
  *
- * @return 1 if matched, 0 if not matched, -1 if an error occurs.
+ * @return 1 if matched, 0 if not matched, -1 if error in packet, -2 if error in program.
  */
-int match_labels(const uint8_t* const target_name,
-                 const uint32_t target_name_max_len,
-                 const uint8_t* const udp_payload,
-                 const uint32_t udp_payload_len,
-                 const uint8_t** src) {
-    const uint8_t* p = *src;
-    ASSERT_POINTER_IN_BOUND(p, udp_payload, udp_payload + udp_payload_len);
-    const uint8_t* q = target_name;
-    ASSERT_POINTER_IN_BOUND(q, target_name, target_name + target_name_max_len);
-    const uint8_t* next_pos = NULL;
-    if (*q == 0) {
-        // target name is empty.
-        return -1;
-    }
-    int is_qname_match = 1;// bool type is not supported in c89
-    uint32_t label_size;
-    uint32_t i;
-    // handling loop by limiting the maximum number of pointer traces.
-    for (i = 0; i < udp_payload_len; i += 2) {
-        ASSERT_POINTER_IN_BOUND(p, udp_payload, udp_payload + udp_payload_len);
-        // handling the message compression: rfc 1035 4.1.4.
-        if (*p >= 0xc0) {
-            if (next_pos == NULL) { next_pos = p + 2; }
-            ASSERT_POINTER_IN_BOUND(p + 1, udp_payload,
-                                    udp_payload + udp_payload_len);
-            uint32_t offset = (uint32_t) (((p[0] & 0x3f) << 8) | p[1]);
-            // checks the offset is inside the udp payloads.
-            if (offset > udp_payload_len) { return -1; }
-            // rfc 1035 4.1.4 does not mention forward jump is not allowed.
-            p = udp_payload + offset;
-        } else if (*p < 0 || *p > 63) {
-            // based on rfc 1035 2.3.4., label size is 63 octets or less.
-            return -1;
-        } else if (*p) {
-            label_size = *p++;
-            // checks labels inside the udp payloads.
-            if (p + label_size > udp_payload + udp_payload_len) { return -1; }
-            ASSERT_POINTER_IN_BOUND(q, target_name,
-                                    target_name + target_name_max_len);
-            if (is_qname_match && label_size == *q++) {
+match_result_type match_single_name(const u8* needle,
+                                    const u8* const needle_bound,
+                                    const u8* const udp,
+                                    const u32 udp_len,
+                                    u32* const ofs) {
+    u32 first_unread_offset = *ofs;
+    bool is_qname_match = true;
+    int lvl;
+
+    /* DNS names are <= 255 characters including terminating 0, since >= 1 char + '.' per level => max. 127 levels */
+    for (lvl = 1; lvl <= 127; ++lvl) {
+        if (*ofs >= udp_len) return error_packet;
+        u8 v = udp[(*ofs)++];
+        if (v >= 0xC0) { /* RFC 1035 4.1.4 - handle message compression */
+            if (*ofs >= udp_len) return error_packet;
+            u8 w = udp[(*ofs)++];
+            if (*ofs > first_unread_offset) first_unread_offset = *ofs;
+            u32 new_ofs = (v - 0xC0) * 256 + w;
+            if (new_ofs >= *ofs) return error_packet;  /* RFC 1035 4.1.4 allows only backward pointers */
+            *ofs = new_ofs;
+        } else if (v > 63) {
+            return error_packet;  /* RFC 1035 2.3.4 - label size is 1..63. */
+        } else if (v) {
+            u8 label_size = v;
+            if (*ofs + label_size > udp_len) return error_packet;
+            if (needle >= needle_bound) return error_program;
+            if (is_qname_match && label_size == *needle++) {
+                if (needle + label_size > needle_bound) return error_program;
                 while (label_size--) {
-                    ASSERT_POINTER_IN_BOUND(p, udp_payload,
-                                            udp_payload + udp_payload_len);
-                    uint8_t pc = *p++;
-                    ASSERT_POINTER_IN_BOUND(q, target_name,
-                                            target_name + target_name_max_len);
-                    is_qname_match = is_qname_match && (TO_UPPER(pc) == *q++);
+                    u8 w = udp[(*ofs)++];
+                    is_qname_match &= (uppercase(w) == *needle++);
                 }
             } else {
-                is_qname_match = 0;
-                p += label_size;
+                *ofs += label_size;
+                is_qname_match = false;
             }
-        } else {
-            // reach the label end
-            if (next_pos == NULL) { next_pos = p + 1; }
-            ASSERT_POINTER_IN_BOUND(next_pos, udp_payload,
-                                    udp_payload + udp_payload_len);
-            *src = next_pos;
-            ASSERT_POINTER_IN_BOUND(q, target_name,
-                                    target_name + target_name_max_len);
-            return is_qname_match && *q == 0;
+        } else { /* reached the end of the name */
+            if (first_unread_offset > *ofs) *ofs = first_unread_offset;
+            return (is_qname_match && *needle == 0) ? match : nomatch;
         }
     }
-    return -1;
-}
-
-
-
- /**
- * Checks if a DNS packet contains any of the target names with the provided
- * question type.
- *
- * @param target_names - TLV encoded names to match against.
- * @param remain_program_len - Remaining program length.
- * @param udp_payload - Pointer to the start of the UDP payload (DNS header).
- * @param udp_payload_len - Length of the UDP payload.
- * @param question_type - Question type to match against. Use -1 to match answers.
- *
- *
- * @return 1 if matched, 0 if not matched, -1 if an error occurs.
- */
-int match_name(const uint8_t* const target_names,
-               const uint32_t remain_program_len,
-               const uint8_t* const udp_payload,
-               const uint32_t udp_payload_len,
-               const int question_type) {
-    const uint8_t* src = udp_payload;
-    uint32_t value;
-    // skip tid and flags
-    DECODE_BYTES(value, 4, src, udp_payload, udp_payload + udp_payload_len);
-    uint32_t num_questions;
-    DECODE_BYTES(num_questions, 2, src, udp_payload, udp_payload + udp_payload_len);
-
-    uint32_t num_answers = 0;
-    DECODE_BYTES(value, 2, src, udp_payload, udp_payload + udp_payload_len);
-    num_answers += value;
-    DECODE_BYTES(value, 2, src, udp_payload, udp_payload + udp_payload_len);
-    num_answers += value;
-    DECODE_BYTES(value, 2, src, udp_payload, udp_payload + udp_payload_len);
-    num_answers += value;
-
-    const uint8_t* q = target_names;
-    while (*q != 0) {
-        src = udp_payload + 12;
-        ASSERT_POINTER_IN_BOUND(src, udp_payload, udp_payload + udp_payload_len);
-        uint32_t j;
-        const uint32_t checked_label_size = (uint32_t) (q - target_names);
-        // match questions
-        for (j = 0; j < num_questions; ++j) {
-            int rst = match_labels(q, remain_program_len - checked_label_size,
-                                   udp_payload, udp_payload_len, &src);
-            if (rst == -1) {
-                return -1;
-            }
-            int qtype;
-            // read qtype
-            DECODE_BYTES(qtype, 2, src, udp_payload, udp_payload + udp_payload_len);
-            // skip qclass
-            DECODE_BYTES(value, 2, src, udp_payload, udp_payload + udp_payload_len);
-            if (rst != 1) {
-                continue;
-            }
-            if ((question_type != -1)
-                && (qtype == 0xff /* TYPE_ANY */ || qtype == question_type)) {
-                return 1;
-            }
-        }
-        // match answers
-        for (j = 0; j < num_answers; ++j) {
-            int rst = match_labels(q, remain_program_len - checked_label_size,
-                                   udp_payload, udp_payload_len, &src);
-            if (rst == -1) {
-                return -1;
-            }
-            // skip type, class, ttl
-            DECODE_BYTES(value, 8, src, udp_payload, udp_payload + udp_payload_len);
-            // decode rdata length
-            uint32_t len;
-            DECODE_BYTES(len, 2, src, udp_payload, udp_payload + udp_payload_len);
-            // skip rdata
-            src += len;
-            if (rst == 1) {
-                return rst;
-            }
-        }
-        // move the pointer to the next name.
-        while (*q != 0) {
-            uint32_t len = *q++;
-            if (len < 1 || len > 63) {
-                return -1;
-            }
-            q += len;
-            ASSERT_POINTER_IN_BOUND(q, target_names, target_names + remain_program_len);
-        }
-        q++;
-        ASSERT_POINTER_IN_BOUND(q, target_names, target_names + remain_program_len);
-    }
-    return 0;
-}
-
-#define ETH_HEADER_LEN 14
-#define IPV4_HEADER_LEN 20
-#define IPV6_HEADER_LEN 40
-#define UDP_HEADER_LEN 8
-#define ICMP6_HEADER_LEN 4
-#define ETHER_TYPE_OFFSET 12
-#define TOS_FIELD_OFFSET 15
-#define IPV4_PROTOCOL_OFFSET 23
-#define IPV4_CHECKSUM_OFFSET 24
-#define IPV4_SRCIP_OFFSET 26
-#define IPV4_DSTIP_OFFSET 30
-#define IPV4_UDP_CHECKSUM_OFFSET 40
-#define IPV6_VERSION_OFFSET 14
-#define IPV6_PROTOCOL_OFFSET 20
-#define IPV6_SRCIP_OFFSET 22
-#define IPV6_DSTIP_OFFSET 38
-#define IPV6_UDP_CHECKSUM_OFFSET 60
-#define IPV6_ICMP6_CHECKSUM_OFFSET 56
-
-/**
- * Calculate range sum of data word by word.
- *
- * @param data - pointer to the start of the data
- * @param data_len  - length of the data
- *
- * @return the sum of data word by word
- */
-static uint32_t range_sum_word(const uint8_t* const data,
-                               const uint32_t data_len) {
-    uint32_t sum = 0;
-    uint32_t i;
-    uint32_t data_prefix_len = data_len;
-    if (data_len % 2 != 0) {
-        sum += (uint16_t) (data[data_len - 1] << 8);
-        data_prefix_len--;
-    }
-    for (i = 0; i < data_prefix_len; i += 2) {
-        sum += (uint16_t) ((data[i] << 8) | data[i + 1]);
-    }
-    return sum;
+    return error_packet;  /* too many dns domain name levels */
 }
 
 /**
- * Calculate the checksum from the range sum.
+ * Check if DNS packet contains any of the target names with the provided
+ * question_type.
  *
- * @param range_sum - the range sum.
- * @param is_udp - is checksum for udp
- * @return  the checksum.
+ * @param needles - non-NULL - pointer to DNS encoded target nameS to match against.
+ *   example: [3]foo[3]com[0][3]bar[3]net[0][0]  -- note ends with an extra NULL byte.
+ * @param needle_bound - non-NULL - points at first invalid byte past needles.
+ * @param udp - non-NULL - pointer to the start of the UDP payload (DNS header).
+ * @param udp_len - length of the UDP payload.
+ * @param question_type - question type to match against or -1 to match answers.
+ *
+ * @return 1 if matched, 0 if not matched, -1 if error in packet, -2 if error in program.
  */
-static uint16_t calc_checksum_from_range_sum(uint32_t range_sum, int is_udp) {
-    while (range_sum >> 16) {
-        range_sum = (range_sum & 0xffff) + (range_sum >> 16);
+match_result_type match_names(const u8* needles,
+                              const u8* const needle_bound,
+                              const u8* const udp,
+                              const u32 udp_len,
+                              const int question_type) {
+    if (udp_len < 12) return error_packet;  /* lack of dns header */
+
+    /* dns header: be16 tid, flags, num_{questions,answers,authority,additional} */
+    u32 num_questions = read_be16(udp + 4);
+    u32 num_answers = read_be16(udp + 6) + read_be16(udp + 8) + read_be16(udp + 10);
+
+    /* loop until we hit final needle, which is a null byte */
+    while (true) {
+        if (needles >= needle_bound) return error_program;
+        if (!*needles) return nomatch;  /* we've run out of needles without finding a match */
+        u32 ofs = 12;  /* dns header is 12 bytes */
+        u32 i;
+        /* match questions */
+        for (i = 0; i < num_questions; ++i) {
+            match_result_type m = match_single_name(needles, needle_bound, udp, udp_len, &ofs);
+            if (m < nomatch) return m;
+            if (ofs + 2 > udp_len) return error_packet;
+            int qtype = (int)read_be16(udp + ofs);
+            ofs += 4; /* skip be16 qtype & qclass */
+            if (question_type == -1) continue;
+            if (m == nomatch) continue;
+            if (qtype == 0xFF /* QTYPE_ANY */ || qtype == question_type) return match;
+        }
+        /* match answers */
+        if (question_type == -1) for (i = 0; i < num_answers; ++i) {
+            match_result_type m = match_single_name(needles, needle_bound, udp, udp_len, &ofs);
+            if (m < nomatch) return m;
+            ofs += 8; /* skip be16 type, class & be32 ttl */
+            if (ofs + 2 > udp_len) return error_packet;
+            ofs += 2 + read_be16(udp + ofs);  /* skip be16 rdata length field, plus length bytes */
+            if (m == match) return match;
+        }
+        /* move needles pointer to the next needle. */
+        do {
+            u8 len = *needles++;
+            if (len > 63) return error_program;
+            needles += len;
+            if (needles >= needle_bound) return error_program;
+        } while (*needles);
+        needles++;  /* skip the NULL byte at the end of *a* DNS name */
     }
-    uint16_t check_sum = ~range_sum;
-    if (check_sum == 0 && is_udp) {
-      check_sum = ~check_sum;
-    }
-    return check_sum;
+}
+/* End include of apf_dns.h */
+/* Begin include of apf_checksum.h */
+/**
+ * Calculate big endian 16-bit sum of a buffer (max 128kB),
+ * then fold and negate it, producing a 16-bit result in [0..FFFE].
+ */
+u16 calc_csum(u32 sum, const u8* const buf, const s32 len) {
+    s32 i;
+    for (i = 0; i < len; ++i) sum += buf[i] * ((i & 1) ? 1 : 256);
+
+    sum = (sum & 0xFFFF) + (sum >> 16);  /* max after this is 1FFFE */
+    u16 csum = sum + (sum >> 16);
+    return ~csum;  /* assuming sum > 0 on input, this is in [0..FFFE] */
+}
+
+static u16 fix_udp_csum(u16 csum) {
+    return csum ? csum : 0xFFFF;
 }
 
 /**
- * Calculate the ipv4 header checksum
- *
- * @param ipv4_hdr - pointer to the start of the ipv4 header.
- * @param hdr_len - length of ipv4_packet.
- *
- * @return the calculated checksum
+ * Calculate the ipv4 header and tcp/udp layer 4 checksums.
+ * (assumes IPv4 checksum field is set to partial sum of ipv4 options [likely 0])
+ * (assumes L4 checksum field is set to L4 payload length on input)
+ * Warning: TCP/UDP L4 checksum corrupts packet iff ipv4 options are present.
+ * Warning: first IPV4_HLEN + TCP_HLEN == 40 bytes of ip4_pkt must be writable!
+ * Returns 6-bit DSCP value [0..63], garbage on parse error.
  */
-static uint16_t calculate_ipv4_header_checksum(const uint8_t* const ipv4_hdr,
-                                               const uint32_t hdr_len) {
-    uint32_t sum = range_sum_word(ipv4_hdr, hdr_len);
-    return calc_checksum_from_range_sum(sum, 0 /* is_udp */);
+static int calc_ipv4_csum(u8* const ip4_pkt, const s32 len) {
+    store_be16(ip4_pkt + 10, calc_csum(0xFFFF, ip4_pkt, IPV4_HLEN));
+
+    u8 proto = ip4_pkt[9];
+    u16 csum = calc_csum(proto, ip4_pkt + 12, len - 12);
+    switch (proto) {
+      case IPPROTO_ICMP:
+        /* Note: for this to work, the icmpv4 checksum field must be prefilled
+         * with non-zero negative sum of proto (1) and src/dst ips, ie:
+         * 5 * 0xFFFF - 1 - (src >> 16) - (src & 0xFFFF) - (dst >> 16) - (dst & 0xFFFF)
+         */
+        store_be16(ip4_pkt + IPV4_HLEN + 2, csum);
+        break;
+      case IPPROTO_TCP:
+        store_be16(ip4_pkt + IPV4_HLEN + 16, csum);
+        break;
+      case IPPROTO_UDP:
+        store_be16(ip4_pkt + IPV4_HLEN + 6, fix_udp_csum(csum));
+        break;
+    }
+    return ip4_pkt[1] >> 2;  /* DSCP */
 }
 
 /**
- * Calculate the layer 4 checksum
- *
- * @param transmit_pkt - pointer to the start of packet.
- * @param transmit_pkt_len - the length of the transmit packet.
- * @param is_ipv4 - if it is a ipv4 packet
- *
- * @return the calculated checksum
+ * Calculate the ipv6 icmp6/tcp/udp layer 4 checksums.
+ * (assumes L4 checksum field is set to L4 payload length on input)
+ * Warning: first IPV6_HLEN + TCP_HLEN == 60 bytes of ip6_pkt must be writable!
+ * Returns 6-bit DSCP value [0..63], garbage on parse error.
  */
-static uint16_t calculate_layer4_checksum(const uint8_t* const transmit_pkt,
-                                          const uint32_t transmit_pkt_len,
-                                          const int is_ipv4) {
-    uint32_t sum = 0;
-    uint8_t protocol;
-    // pseudo header checksum
-    if (is_ipv4) {
-        sum += range_sum_word(transmit_pkt + IPV4_SRCIP_OFFSET, 4);
-        sum += range_sum_word(transmit_pkt + IPV4_DSTIP_OFFSET, 4);
-        protocol = transmit_pkt[IPV4_PROTOCOL_OFFSET];
-        sum += protocol;
-    } else {
-        sum += range_sum_word(transmit_pkt + IPV6_SRCIP_OFFSET, 16);
-        sum += range_sum_word(transmit_pkt + IPV6_DSTIP_OFFSET, 16);
-        protocol = transmit_pkt[IPV6_PROTOCOL_OFFSET];
-        sum += protocol;
+static int calc_ipv6_csum(u8* const ip6_pkt, const s32 len) {
+    u8 proto = ip6_pkt[6];
+    u16 csum = calc_csum(proto, ip6_pkt + 8, len - 8);
+    switch (proto) {
+      case IPPROTO_ICMPV6:
+        store_be16(ip6_pkt + IPV6_HLEN + 2, csum);
+        break;
+      case IPPROTO_TCP:
+        store_be16(ip6_pkt + IPV6_HLEN + 16, csum);
+        break;
+      case IPPROTO_UDP:
+        store_be16(ip6_pkt + IPV6_HLEN + 6, fix_udp_csum(csum));
+        break;
     }
-    const uint32_t ip_hdr_len = is_ipv4 ? IPV4_HEADER_LEN : IPV6_HEADER_LEN;
-    const uint8_t* layer4_hdr = transmit_pkt + ETH_HEADER_LEN + ip_hdr_len;
-    const uint16_t layer4_len = transmit_pkt_len - ETH_HEADER_LEN - ip_hdr_len;
-    sum += layer4_len;
-    sum += range_sum_word(layer4_hdr, layer4_len);
-    return calc_checksum_from_range_sum(sum, protocol == 0x11 /* is_udp */ );
+    return (read_be16(ip6_pkt) >> 6) & 0x3F;  /* DSCP */
 }
 
 /**
- * Calculate the transmit packet checksum if necessary
+ * Calculate and store packet checksums and return dscp.
  *
- * @param transmit_pkt - pointer to the start of the transmit packet.
- * @param transmit_pkt_len - length of the transmit packet.
- * @param dscp - the value holder for the dscp value.
+ * @param pkt - pointer to the start of the ethernet header of the packet.
+ *     WARNING: first ETHER_HLEN + max(IPV{4,6}_HLEN) + TCP_HLEN = 74 bytes
+ *              of buffer pointed to my 'pkt' pointer *MUST* be writable.
+ * @param len - length of the packet.
  *
- * @return 1 if checksum calculate, 0 if no need to calculate checksum,
- *         -1 if error occurs.
+ * @return 6-bit DSCP value [0..63], garbage on parse error.
  */
-int calculate_checksum_and_get_dscp(uint8_t* const transmit_pkt,
-                                    uint32_t transmit_pkt_len, uint8_t* dscp) {
-#define ASSERT_PKT_LEN(l) if (transmit_pkt_len < (l)) return -1
-    ASSERT_PKT_LEN(ETH_HEADER_LEN);
-    if (transmit_pkt[ETHER_TYPE_OFFSET] == 0x08
-        && transmit_pkt[ETHER_TYPE_OFFSET + 1] == 0x06) {
-        // For ARP packet, no need to calculate the checksum
-        return 0;
-    } else if (transmit_pkt[ETHER_TYPE_OFFSET] == 0x08
-               && transmit_pkt[ETHER_TYPE_OFFSET + 1] == 0x00) {
-        ASSERT_PKT_LEN(ETH_HEADER_LEN + IPV4_HEADER_LEN + UDP_HEADER_LEN);
-        // for IPv4, only support UDP packet
-        if (transmit_pkt[IPV4_PROTOCOL_OFFSET] != 0x11) {
-            return -1;
-        }
-        // get dscp
-        *dscp = (transmit_pkt[TOS_FIELD_OFFSET] >> 2) & 0x3f;
-        // calculate ipv4 checksum
-        const uint16_t ipv4_checksum = calculate_ipv4_header_checksum(
-            transmit_pkt + ETH_HEADER_LEN, IPV4_HEADER_LEN);
-        transmit_pkt[IPV4_CHECKSUM_OFFSET] =
-            (uint8_t) ((ipv4_checksum >> 8) & 0xff);
-        transmit_pkt[IPV4_CHECKSUM_OFFSET + 1] =
-            (uint8_t) (ipv4_checksum & 0xff);
-        const uint16_t layer4_checksum = calculate_layer4_checksum(
-            transmit_pkt, transmit_pkt_len, 1 /* is_ipv4 */
-        );
-        transmit_pkt[IPV4_UDP_CHECKSUM_OFFSET] =
-            (uint8_t) ((layer4_checksum >> 8) & 0xff);
-        transmit_pkt[IPV4_UDP_CHECKSUM_OFFSET + 1] =
-            (uint8_t) (layer4_checksum & 0xff);
-        return 1;
-    } else if (transmit_pkt[ETHER_TYPE_OFFSET] == 0x86
-               && transmit_pkt[ETHER_TYPE_OFFSET + 1] == 0xdd) {
-        ASSERT_PKT_LEN(ETH_HEADER_LEN + IPV6_HEADER_LEN);
-        if (transmit_pkt[IPV6_PROTOCOL_OFFSET] == 0x11) {
-            ASSERT_PKT_LEN(ETH_HEADER_LEN + IPV6_HEADER_LEN + UDP_HEADER_LEN);
-        } else if (transmit_pkt[IPV6_PROTOCOL_OFFSET] == 0x3a) {
-            ASSERT_PKT_LEN(ETH_HEADER_LEN + IPV6_HEADER_LEN + ICMP6_HEADER_LEN);
-        } else {
-             // only support udp and icmp6
-            return -1;
-        }
-        *dscp = ((transmit_pkt[IPV6_VERSION_OFFSET] & 0xf) << 2)
-            | (transmit_pkt[IPV6_VERSION_OFFSET + 1] >> 6 & 0x3);
-        const uint16_t layer4_checksum = calculate_layer4_checksum(
-            transmit_pkt, transmit_pkt_len, 0 /* is_ipv4 */
-        );
-        if (transmit_pkt[IPV6_PROTOCOL_OFFSET] == 0x11) {
-            transmit_pkt[IPV6_UDP_CHECKSUM_OFFSET] =
-                (uint8_t) ((layer4_checksum >> 8) & 0xff);
-            transmit_pkt[IPV6_UDP_CHECKSUM_OFFSET + 1] =
-                (uint8_t) (layer4_checksum & 0xff);
-        } else if (transmit_pkt[IPV6_PROTOCOL_OFFSET] == 0x3a) {
-            transmit_pkt[IPV6_ICMP6_CHECKSUM_OFFSET] =
-                (uint8_t) ((layer4_checksum >> 8) & 0xff);
-            transmit_pkt[IPV6_ICMP6_CHECKSUM_OFFSET + 1] =
-                (uint8_t) (layer4_checksum & 0xff);
-        }
-        return 1;
+int calculate_checksum_and_return_dscp(u8* const pkt, const s32 len) {
+    switch (read_be16(pkt + 12)) {  /* ethertype */
+      case ETH_P_IP:   return calc_ipv4_csum(pkt + ETH_HLEN, len - ETH_HLEN);
+      case ETH_P_IPV6: return calc_ipv6_csum(pkt + ETH_HLEN, len - ETH_HLEN);
+      default: return 0;
     }
-    return -1;
 }
-
-#ifdef __cplusplus
-}
-#endif
+/* End include of apf_checksum.h */
 
 // User hook for interpreter debug tracing.
 #ifdef APF_TRACE_HOOK
@@ -623,7 +518,7 @@ extern void APF_TRACE_HOOK(uint32_t pc, const uint32_t* regs, const uint8_t* pro
 #define ENFORCE_UNSIGNED(c) ((c)==(uint32_t)(c))
 
 uint32_t apf_version(void) {
-    return 20240123;
+    return 20240124;
 }
 
 int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
@@ -887,8 +782,9 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                     } else {
                         DECODE_IMM(allocated_buffer_len, 2);
                     }
-                    allocated_buffer =
-                        apf_allocate_buffer(ctx, allocated_buffer_len);
+                    // checksumming functions requires minimum 74 byte buffer for correctness
+                    if (allocated_buffer_len < 74) allocated_buffer_len = 74;
+                    allocated_buffer = apf_allocate_buffer(ctx, allocated_buffer_len);
                     ASSERT_RETURN(allocated_buffer != NULL);
                     memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = 0;
                     break;
@@ -905,20 +801,8 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                             0 /* dscp */);
                         return PASS_PACKET;
                     }
-                    uint8_t dscp = 0;
-                    int chksum_rst = calculate_checksum_and_get_dscp(allocated_buffer,
-                                                              pkt_len, &dscp);
-                    // any error happened during checksum calculation
-                    if (chksum_rst == -1) {
-                        apf_transmit_buffer(ctx, allocated_buffer, 0 /* len */,
-                                            0 /* dscp */);
-                        return PASS_PACKET;
-                    }
-                    apf_transmit_buffer(
-                        ctx,
-                        allocated_buffer,
-                        pkt_len,
-                        dscp);
+                    int dscp = calculate_checksum_and_return_dscp(allocated_buffer, pkt_len);
+                    apf_transmit_buffer(ctx, allocated_buffer, pkt_len, dscp);
                     allocated_buffer = NULL;
                     break;
                   case JDNSQMATCH_EXT_OPCODE: {
@@ -928,11 +812,11 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                     int qtype;
                     DECODE_IMM(qtype, 1);
                     uint32_t udp_payload_offset = registers[0];
-                    int match_rst = match_name(&program[pc],
-                                         program_len - pc,
-                                         packet + udp_payload_offset,
-                                         packet_len - udp_payload_offset,
-                                         qtype);
+                    int match_rst = match_names(program + pc,
+                                                program + program_len,
+                                                packet + udp_payload_offset,
+                                                packet_len - udp_payload_offset,
+                                                qtype);
                     if (match_rst == -1) {
                         return PASS_PACKET;
                     }
