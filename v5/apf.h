@@ -17,116 +17,116 @@
 #ifndef ANDROID_APF_APF_H
 #define ANDROID_APF_APF_H
 
-// A brief overview of APF:
-//
-// APF machine is composed of:
-//  1. A read-only program consisting of bytecodes as described below.
-//  2. Two 32-bit registers, called R0 and R1.
-//  3. Sixteen 32-bit temporary memory slots (cleared between packets).
-//  4. A read-only packet.
-// The program is executed by the interpreter below and parses the packet
-// to determine if the application processor (AP) should be woken up to
-// handle the packet or if can be dropped.
-//
-// APF bytecode description:
-//
-// The APF interpreter uses big-endian byte order for loads from the packet
-// and for storing immediates in instructions.
-//
-// Each instruction starts with a byte composed of:
-//  Top 5 bits form "opcode" field, see *_OPCODE defines below.
-//  Next 2 bits form "size field", which indicate the length of an immediate
-//  value which follows the first byte.  Values in this field:
-//                 0 => immediate value is 0 and no bytes follow.
-//                 1 => immediate value is 1 byte big.
-//                 2 => immediate value is 2 bytes big.
-//                 3 => immediate value is 4 bytes big.
-//  Bottom bit forms "register" field, which indicates which register this
-//  instruction operates on.
-//
-//  There are three main categories of instructions:
-//  Load instructions
-//    These instructions load byte(s) of the packet into a register.
-//    They load either 1, 2 or 4 bytes, as determined by the "opcode" field.
-//    They load into the register specified by the "register" field.
-//    The immediate value that follows the first byte of the instruction is
-//    the byte offset from the beginning of the packet to load from.
-//    There are "indexing" loads which add the value in R1 to the byte offset
-//    to load from. The "opcode" field determines which loads are "indexing".
-//  Arithmetic instructions
-//    These instructions perform simple operations, like addition, on register
-//    values. The result of these instructions is always written into R0. One
-//    argument of the arithmetic operation is R0's value. The other argument
-//    of the arithmetic operation is determined by the "register" field:
-//            If the "register" field is 0 then the immediate value following
-//            the first byte of the instruction is used as the other argument
-//            to the arithmetic operation.
-//            If the "register" field is 1 then R1's value is used as the other
-//            argument to the arithmetic operation.
-//  Conditional jump instructions
-//    These instructions compare register R0's value with another value, and if
-//    the comparison succeeds, jump (i.e. adjust the program counter). The
-//    immediate value that follows the first byte of the instruction
-//    represents the jump target offset, i.e. the value added to the program
-//    counter if the comparison succeeds. The other value compared is
-//    determined by the "register" field:
-//            If the "register" field is 0 then another immediate value
-//            follows the jump target offset. This immediate value is of the
-//            same size as the jump target offset, and represents the value
-//            to compare against.
-//            If the "register" field is 1 then register R1's value is
-//            compared against.
-//    The type of comparison (e.g. equal to, greater than etc) is determined
-//    by the "opcode" field. The comparison interprets both values being
-//    compared as unsigned values.
-//
-//  Miscellaneous details:
-//
-//  Pre-filled temporary memory slot values
-//    When the APF program begins execution, three of the sixteen memory slots
-//    are pre-filled by the interpreter with values that may be useful for
-//    programs:
-//      Slot #11 contains the size (in bytes) of the APF program.
-//      Slot #12 contains the total size of the APF buffer (program + data).
-//      Slot #13 is filled with the IPv4 header length. This value is calculated
-//               by loading the first byte of the IPv4 header and taking the
-//               bottom 4 bits and multiplying their value by 4. This value is
-//               set to zero if the first 4 bits after the link layer header are
-//               not 4, indicating not IPv4.
-//      Slot #14 is filled with size of the packet in bytes, including the
-//               link-layer header if any.
-//      Slot #15 is filled with the filter age in seconds. This is the number of
-//               seconds since the AP sent the program to the chipset. This may
-//               be used by filters that should have a particular lifetime. For
-//               example, it can be used to rate-limit particular packets to one
-//               every N seconds.
-//  Special jump targets:
-//    When an APF program executes a jump to the byte immediately after the last
-//      byte of the progam (i.e., one byte past the end of the program), this
-//      signals the program has completed and determined the packet should be
-//      passed to the AP.
-//    When an APF program executes a jump two bytes past the end of the program,
-//      this signals the program has completed and determined the packet should
-//      be dropped.
-//  Jump if byte sequence doesn't match:
-//    This is a special instruction to facilitate matching long sequences of
-//    bytes in the packet. Initially it is encoded like a conditional jump
-//    instruction with two exceptions:
-//      The first byte of the instruction is always followed by two immediate
-//        fields: The first immediate field is the jump target offset like other
-//        conditional jump instructions. The second immediate field specifies the
-//        number of bytes to compare.
-//      These two immediate fields are followed by a sequence of bytes. These
-//        bytes are compared with the bytes in the packet starting from the
-//        position specified by the value of the register specified by the
-//        "register" field of the instruction.
+/* A brief overview of APF:
+ *
+ * APF machine is composed of:
+ *  1. A read-only program consisting of bytecodes as described below.
+ *  2. Two 32-bit registers, called R0 and R1.
+ *  3. Sixteen 32-bit temporary memory slots (cleared between packets).
+ *  4. A read-only packet.
+ * The program is executed by the interpreter below and parses the packet
+ * to determine if the application processor (AP) should be woken up to
+ * handle the packet or if can be dropped.
+ *
+ * APF bytecode description:
+ *
+ * The APF interpreter uses big-endian byte order for loads from the packet
+ * and for storing immediates in instructions.
+ *
+ * Each instruction starts with a byte composed of:
+ *  Top 5 bits form "opcode" field, see *_OPCODE defines below.
+ *  Next 2 bits form "size field", which indicate the length of an immediate
+ *  value which follows the first byte.  Values in this field:
+ *                 0 => immediate value is 0 and no bytes follow.
+ *                 1 => immediate value is 1 byte big.
+ *                 2 => immediate value is 2 bytes big.
+ *                 3 => immediate value is 4 bytes big.
+ *  Bottom bit forms "register" field, which indicates which register this
+ *  instruction operates on.
+ *
+ *  There are three main categories of instructions:
+ *  Load instructions
+ *    These instructions load byte(s) of the packet into a register.
+ *    They load either 1, 2 or 4 bytes, as determined by the "opcode" field.
+ *    They load into the register specified by the "register" field.
+ *    The immediate value that follows the first byte of the instruction is
+ *    the byte offset from the beginning of the packet to load from.
+ *    There are "indexing" loads which add the value in R1 to the byte offset
+ *    to load from. The "opcode" field determines which loads are "indexing".
+ *  Arithmetic instructions
+ *    These instructions perform simple operations, like addition, on register
+ *    values. The result of these instructions is always written into R0. One
+ *    argument of the arithmetic operation is R0's value. The other argument
+ *    of the arithmetic operation is determined by the "register" field:
+ *            If the "register" field is 0 then the immediate value following
+ *            the first byte of the instruction is used as the other argument
+ *            to the arithmetic operation.
+ *            If the "register" field is 1 then R1's value is used as the other
+ *            argument to the arithmetic operation.
+ *  Conditional jump instructions
+ *    These instructions compare register R0's value with another value, and if
+ *    the comparison succeeds, jump (i.e. adjust the program counter). The
+ *    immediate value that follows the first byte of the instruction
+ *    represents the jump target offset, i.e. the value added to the program
+ *    counter if the comparison succeeds. The other value compared is
+ *    determined by the "register" field:
+ *            If the "register" field is 0 then another immediate value
+ *            follows the jump target offset. This immediate value is of the
+ *            same size as the jump target offset, and represents the value
+ *            to compare against.
+ *            If the "register" field is 1 then register R1's value is
+ *            compared against.
+ *    The type of comparison (e.g. equal to, greater than etc) is determined
+ *    by the "opcode" field. The comparison interprets both values being
+ *    compared as unsigned values.
+ *
+ *  Miscellaneous details:
+ *
+ *  Pre-filled temporary memory slot values
+ *    When the APF program begins execution, three of the sixteen memory slots
+ *    are pre-filled by the interpreter with values that may be useful for
+ *    programs:
+ *      Slot #11 contains the size (in bytes) of the APF program.
+ *      Slot #12 contains the total size of the APF buffer (program + data).
+ *      Slot #13 is filled with the IPv4 header length. This value is calculated
+ *               by loading the first byte of the IPv4 header and taking the
+ *               bottom 4 bits and multiplying their value by 4. This value is
+ *               set to zero if the first 4 bits after the link layer header are
+ *               not 4, indicating not IPv4.
+ *      Slot #14 is filled with size of the packet in bytes, including the
+ *               link-layer header if any.
+ *      Slot #15 is filled with the filter age in seconds. This is the number of
+ *               seconds since the AP sent the program to the chipset. This may
+ *               be used by filters that should have a particular lifetime. For
+ *               example, it can be used to rate-limit particular packets to one
+ *               every N seconds.
+ *  Special jump targets:
+ *    When an APF program executes a jump to the byte immediately after the last
+ *      byte of the progam (i.e., one byte past the end of the program), this
+ *      signals the program has completed and determined the packet should be
+ *      passed to the AP.
+ *    When an APF program executes a jump two bytes past the end of the program,
+ *      this signals the program has completed and determined the packet should
+ *      be dropped.
+ *  Jump if byte sequence doesn't match:
+ *    This is a special instruction to facilitate matching long sequences of
+ *    bytes in the packet. Initially it is encoded like a conditional jump
+ *    instruction with two exceptions:
+ *      The first byte of the instruction is always followed by two immediate
+ *        fields: The first immediate field is the jump target offset like other
+ *        conditional jump instructions. The second immediate field specifies the
+ *        number of bytes to compare.
+ *      These two immediate fields are followed by a sequence of bytes. These
+ *        bytes are compared with the bytes in the packet starting from the
+ *        position specified by the value of the register specified by the
+ *        "register" field of the instruction.
+ */
 
 // Number of temporary memory slots, see ldm/stm instructions.
 #define MEMORY_ITEMS 16
 // Upon program execution, some temporary memory slots are prefilled:
 
-// Offset inside the output buffer where the next byte of output packet should
-// be written to.
+// Offset inside the output buffer where the next byte of output packet should be written to.
 #define MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET 10
 #define MEMORY_OFFSET_PROGRAM_SIZE 11     // Size of program (in bytes)
 #define MEMORY_OFFSET_DATA_SIZE 12        // Total size of program + data
@@ -159,10 +159,11 @@
 #define LDDW_OPCODE 22  // Load 4 bytes from data address (register + simm): "lddw R0, [5+R1]"
 #define STDW_OPCODE 23  // Store 4 bytes to data address (register + simm): "stdw R0, [5+R1]"
 #define WRITE_OPCODE 24 // Write 1, 2 or 4 bytes imm to the output buffer, e.g. "WRITE 5"
-// Copy the data from input packet or APF data region to output buffer. Register bit is
-// used to specify the source of data copy: R=0 means copy from packet, R=1 means copy
-// from APF data region. The source offset is encoded in the first imm and the copy length
-// is encoded in the second imm. "e.g. MEMCOPY(R=0), 5, 5"
+/* Copy the data from input packet or APF data region to output buffer. Register bit is
+ * used to specify the source of data copy: R=0 means copy from packet, R=1 means copy
+ * from APF data region. The source offset is encoded in the first imm and the copy length
+ * is encoded in the second imm. "e.g. MEMCOPY(R=0), 5, 5"
+ */
 #define MEMCOPY_OPCODE 25
 
 // Extended opcodes. These all have an opcode of EXT_OPCODE
@@ -186,14 +187,15 @@
 // Copy the data from APF data region to output buffer. The source offset is encoded as [Rx + second imm].
 // The copy length is encoded in the third imm. "e.g. EDATACOPY [R0 + 5], 5"
 #define EDATACOPY 42
-// Jumps if the UDP payload content (starting at R0) does not contain the specified QNAME,
-// applying MDNS case insensitivity.
-// R0: Offset to UDP payload content
-// imm1: Opcode
-// imm2: Label offset
-// imm3(u8): Question type (PTR/SRV/TXT/A/AAAA)
-// imm4(bytes): TLV-encoded QNAME list (null-terminated)
-// e.g.: "jdnsqmatch R0,label,0x0c,\002aa\005local\0\0"
+/* Jumps if the UDP payload content (starting at R0) does not contain the specified QNAME,
+ * applying MDNS case insensitivity.
+ * R0: Offset to UDP payload content
+ * imm1: Opcode
+ * imm2: Label offset
+ * imm3(u8): Question type (PTR/SRV/TXT/A/AAAA)
+ * imm4(bytes): TLV-encoded QNAME list (null-terminated)
+ * e.g.: "jdnsqmatch R0,label,0x0c,\002aa\005local\0\0"
+ */
 #define JDNSQMATCH_EXT_OPCODE 43
 
 #define EXTRACT_OPCODE(i) (((i) >> 3) & 31)
