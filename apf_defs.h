@@ -16,6 +16,10 @@ typedef enum {
 #define ETH_P_IP	0x0800
 #define ETH_P_IPV6	0x86DD
 
+#ifndef IPPROTO_ICMP
+#define IPPROTO_ICMP	1
+#endif
+
 #ifndef IPPROTO_TCP
 #define IPPROTO_TCP	6
 #endif

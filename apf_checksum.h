@@ -29,6 +29,13 @@ static int calc_ipv4_csum(u8* const ip4_pkt, const s32 len) {
     u8 proto = ip4_pkt[9];
     u16 csum = calc_csum(proto, ip4_pkt + 12, len - 12);
     switch (proto) {
+      case IPPROTO_ICMP:
+        /* Note: for this to work, the icmpv4 checksum field must be prefilled
+         * with non-zero negative sum of proto (1) and src/dst ips, ie:
+         * 5 * 0xFFFF - 1 - (src >> 16) - (src & 0xFFFF) - (dst >> 16) - (dst & 0xFFFF)
+         */
+        store_be16(ip4_pkt + IPV4_HLEN + 2, csum);
+        break;
       case IPPROTO_TCP:
         store_be16(ip4_pkt + IPV4_HLEN + 16, csum);
         break;
