@@ -1,15 +1,9 @@
 #include <stdint.h>
 #include <gtest/gtest.h>
 #include <arpa/inet.h>
-#ifdef __cplusplus
-extern "C" {
-#endif
 #include "apf_defs.h"
 #include "apf_utils.h"
 #include "apf_dns.h"
-#ifdef __cplusplus
-}
-#endif
 
 namespace apf {
 
