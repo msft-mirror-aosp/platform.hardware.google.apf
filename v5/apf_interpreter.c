@@ -495,9 +495,9 @@ int calculate_checksum_and_return_dscp(u8* const pkt, const s32 len) {
 
 // User hook for interpreter debug tracing.
 #ifdef APF_TRACE_HOOK
-extern void APF_TRACE_HOOK(uint32_t pc, const uint32_t* regs, const uint8_t* program,
-                           uint32_t program_len, const uint8_t *packet, uint32_t packet_len,
-                           const uint32_t* memory, uint32_t ram_len);
+extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
+                           u32 program_len, const u8 *packet, u32 packet_len,
+                           const u32* memory, u32 ram_len);
 #else
 #define APF_TRACE_HOOK(pc, regs, program, program_len, packet, packet_len, memory, memory_len) \
     do { /* nop*/                                                                              \
@@ -515,15 +515,15 @@ extern void APF_TRACE_HOOK(uint32_t pc, const uint32_t* regs, const uint8_t* pro
 // If "c" is of an unsigned type, generate a compile warning that gets promoted to an error.
 // This makes bounds checking simpler because ">= 0" can be avoided. Otherwise adding
 // superfluous ">= 0" with unsigned expressions generates compile warnings.
-#define ENFORCE_UNSIGNED(c) ((c)==(uint32_t)(c))
+#define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
-uint32_t apf_version(void) {
+u32 apf_version(void) {
     return 20240124;
 }
 
-int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
-            const uint32_t ram_len, const uint8_t* const packet,
-            const uint32_t packet_len, const uint32_t filter_age_16384ths) {
+int apf_run(void* ctx, u8* const program, const u32 program_len,
+            const u32 ram_len, const u8* const packet,
+            const u32 packet_len, const u32 filter_age_16384ths) {
 // Is offset within program bounds?
 #define IN_PROGRAM_BOUNDS(p) (ENFORCE_UNSIGNED(p) && (p) < program_len)
 // Is offset within ram bounds?
@@ -546,11 +546,11 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
 #define ASSERT_IN_DATA_BOUNDS(p, size) ASSERT_RETURN(IN_DATA_BOUNDS(p, size))
 
   // Program counter.
-  uint32_t pc = 0;
+  u32 pc = 0;
 // Accept packet if not within program or not ahead of program counter
 #define ASSERT_FORWARD_IN_PROGRAM(p) ASSERT_RETURN(IN_PROGRAM_BOUNDS(p) && (p) >= pc)
   // Memory slot values.
-  uint32_t memory[MEMORY_ITEMS] = {};
+  u32 memory[MEMORY_ITEMS] = {};
   // Fill in pre-filled memory slot values.
   memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = 0;
   memory[MEMORY_OFFSET_PROGRAM_SIZE] = program_len;
@@ -563,17 +563,17 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
       memory[MEMORY_OFFSET_IPV4_HEADER_SIZE] = (packet[APF_FRAME_HEADER_SIZE] & 15) * 4;
   }
   // Register values.
-  uint32_t registers[2] = {};
+  u32 registers[2] = {};
   // Count of instructions remaining to execute. This is done to ensure an
   // upper bound on execution time. It should never be hit and is only for
   // safety. Initialize to the number of bytes in the program which is an
   // upper bound on the number of instructions in the program.
-  uint32_t instructions_remaining = program_len;
+  u32 instructions_remaining = program_len;
 
   // The output buffer pointer
-  uint8_t* allocated_buffer = NULL;
+  u8* allocated_buffer = NULL;
   // The length of the output buffer
-  uint32_t allocated_buffer_len = 0;
+  u32 allocated_buffer_len = 0;
 // Is access to offset |p| length |size| within output buffer bounds?
 #define IN_OUTPUT_BOUNDS(p, size) (ENFORCE_UNSIGNED(p) && \
                                  ENFORCE_UNSIGNED(size) && \
@@ -587,7 +587,7 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
     do {                                                                       \
         ASSERT_FORWARD_IN_PROGRAM(pc + length - 1);                            \
         value = 0;                                                             \
-        uint32_t i;                                                            \
+        u32 i;                                                            \
         for (i = 0; i < (length) && pc < program_len; i++)                     \
             value = (value << 8) | program[pc++];                              \
     } while (0)
@@ -600,21 +600,21 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
           return DROP_PACKET;
       }
       ASSERT_IN_PROGRAM_BOUNDS(pc);
-      const uint8_t bytecode = program[pc++];
-      const uint32_t opcode = EXTRACT_OPCODE(bytecode);
-      const uint32_t reg_num = EXTRACT_REGISTER(bytecode);
+      const u8 bytecode = program[pc++];
+      const u32 opcode = EXTRACT_OPCODE(bytecode);
+      const u32 reg_num = EXTRACT_REGISTER(bytecode);
 #define REG (registers[reg_num])
 #define OTHER_REG (registers[reg_num ^ 1])
       // All instructions have immediate fields, so load them now.
-      const uint32_t len_field = EXTRACT_IMM_LENGTH(bytecode);
-      uint32_t imm = 0;
-      int32_t signed_imm = 0;
+      const u32 len_field = EXTRACT_IMM_LENGTH(bytecode);
+      u32 imm = 0;
+      s32 signed_imm = 0;
       if (len_field != 0) {
-          const uint32_t imm_len = 1 << (len_field - 1);
+          const u32 imm_len = 1 << (len_field - 1);
           ASSERT_FORWARD_IN_PROGRAM(pc + imm_len - 1);
           DECODE_IMM(imm, imm_len);
           // Sign extend imm into signed_imm.
-          signed_imm = (int32_t) (imm << ((4 - imm_len) * 8));
+          signed_imm = (s32) (imm << ((4 - imm_len) * 8));
           signed_imm >>= (4 - imm_len) * 8;
       }
 
@@ -625,13 +625,13 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
           case LDBX_OPCODE:
           case LDHX_OPCODE:
           case LDWX_OPCODE: {
-              uint32_t offs = imm;
+              u32 offs = imm;
               if (opcode >= LDBX_OPCODE) {
                   // Note: this can overflow and actually decrease offs.
                   offs += registers[1];
               }
               ASSERT_IN_PACKET_BOUNDS(offs);
-              uint32_t load_size = 0;
+              u32 load_size = 0;
               switch (opcode) {
                   case LDB_OPCODE:
                   case LDBX_OPCODE:
@@ -648,11 +648,11 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                   // Immediately enclosing switch statement guarantees
                   // opcode cannot be any other value.
               }
-              const uint32_t end_offs = offs + (load_size - 1);
+              const u32 end_offs = offs + (load_size - 1);
               // Catch overflow/wrap-around.
               ASSERT_RETURN(end_offs >= offs);
               ASSERT_IN_PACKET_BOUNDS(end_offs);
-              uint32_t val = 0;
+              u32 val = 0;
               while (load_size--)
                   val = (val << 8) | packet[offs++];
               REG = val;
@@ -669,11 +669,11 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
           case JSET_OPCODE:
           case JNEBS_OPCODE: {
               // Load second immediate field.
-              uint32_t cmp_imm = 0;
+              u32 cmp_imm = 0;
               if (reg_num == 1) {
                   cmp_imm = registers[1];
               } else if (len_field != 0) {
-                  uint32_t cmp_imm_len = 1 << (len_field - 1);
+                  u32 cmp_imm_len = 1 << (len_field - 1);
                   ASSERT_FORWARD_IN_PROGRAM(pc + cmp_imm_len - 1);
                   DECODE_IMM(cmp_imm, cmp_imm_len);
               }
@@ -705,7 +705,7 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                       // REG is offset of packet bytes to compare.
                       ASSERT_FORWARD_IN_PROGRAM(pc + cmp_imm - 1);
                       ASSERT_IN_PACKET_BOUNDS(REG);
-                      const uint32_t last_packet_offs = REG + cmp_imm - 1;
+                      const u32 last_packet_offs = REG + cmp_imm - 1;
                       ASSERT_RETURN(last_packet_offs >= REG);
                       ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
                       if (memcmp(program + pc, packet + REG, cmp_imm))
@@ -724,7 +724,7 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
               registers[0] *= reg_num ? registers[1] : imm;
               break;
           case DIV_OPCODE: {
-              const uint32_t div_operand = reg_num ? registers[1] : imm;
+              const u32 div_operand = reg_num ? registers[1] : imm;
               ASSERT_RETURN(div_operand);
               registers[0] /= div_operand;
               break;
@@ -736,7 +736,7 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
               registers[0] |= reg_num ? registers[1] : imm;
               break;
           case SH_OPCODE: {
-              const int32_t shift_val = reg_num ? (int32_t)registers[1] : signed_imm;
+              const s32 shift_val = reg_num ? (s32)registers[1] : signed_imm;
               if (shift_val > 0)
                   registers[0] <<= shift_val;
               else
@@ -744,7 +744,7 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
               break;
           }
           case LI_OPCODE:
-              REG = (uint32_t) signed_imm;
+              REG = (u32) signed_imm;
               break;
           case EXT_OPCODE:
               if (
@@ -767,7 +767,7 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                     REG = -REG;
                     break;
                   case SWAP_EXT_OPCODE: {
-                    uint32_t tmp = REG;
+                    u32 tmp = REG;
                     REG = OTHER_REG;
                     OTHER_REG = tmp;
                     break;
@@ -790,7 +790,7 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                     break;
                   case TRANS_EXT_OPCODE:
                     ASSERT_RETURN(allocated_buffer != NULL);
-                    uint32_t pkt_len = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
+                    u32 pkt_len = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
                     // If pkt_len > allocate_buffer_len, it means sth. wrong
                     // happened and the allocated_buffer should be deallocated.
                     if (pkt_len > allocated_buffer_len) {
@@ -806,12 +806,12 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
                     allocated_buffer = NULL;
                     break;
                   case JDNSQMATCH_EXT_OPCODE: {
-                    const uint32_t imm_len = 1 << (len_field - 1);
-                    uint32_t jump_offs;
+                    const u32 imm_len = 1 << (len_field - 1);
+                    u32 jump_offs;
                     DECODE_IMM(jump_offs, imm_len);
                     int qtype;
                     DECODE_IMM(qtype, 1);
-                    uint32_t udp_payload_offset = registers[0];
+                    u32 udp_payload_offset = registers[0];
                     int match_rst = match_names(program + pc,
                                                 program + program_len,
                                                 packet + udp_payload_offset,
@@ -838,9 +838,9 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
               }
               break;
           case LDDW_OPCODE: {
-              uint32_t offs = OTHER_REG + (uint32_t) signed_imm;
-              uint32_t size = 4;
-              uint32_t val = 0;
+              u32 offs = OTHER_REG + (u32) signed_imm;
+              u32 size = 4;
+              u32 val = 0;
               // Negative offsets wrap around the end of the address space.
               // This allows us to efficiently access the end of the
               // address space with one-byte immediates without using %=.
@@ -854,9 +854,9 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
               break;
           }
           case STDW_OPCODE: {
-              uint32_t offs = OTHER_REG + (uint32_t) signed_imm;
-              uint32_t size = 4;
-              uint32_t val = REG;
+              u32 offs = OTHER_REG + (u32) signed_imm;
+              u32 size = 4;
+              u32 val = REG;
               // Negative offsets wrap around the end of the address space.
               // This allows us to efficiently access the end of the
               // address space with one-byte immediates without using %=.
@@ -873,14 +873,14 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
           case WRITE_OPCODE: {
               ASSERT_RETURN(allocated_buffer != NULL);
               ASSERT_RETURN(len_field > 0);
-              uint32_t offs = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
-              const uint32_t write_len = 1 << (len_field - 1);
+              u32 offs = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
+              const u32 write_len = 1 << (len_field - 1);
               ASSERT_RETURN(write_len > 0);
               ASSERT_IN_OUTPUT_BOUNDS(offs, write_len);
-              uint32_t i;
+              u32 i;
               for (i = 0; i < write_len; ++i) {
                   *(allocated_buffer + offs) =
-                      (uint8_t) ((imm >> (write_len - 1 - i) * 8) & 0xff);
+                      (u8) ((imm >> (write_len - 1 - i) * 8) & 0xff);
                   offs++;
               }
               memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = offs;
@@ -888,15 +888,15 @@ int apf_run(void* ctx, uint8_t* const program, const uint32_t program_len,
           }
           case MEMCOPY_OPCODE: {
               ASSERT_RETURN(allocated_buffer != NULL);
-              uint32_t src_offs = imm;
-              uint32_t copy_len;
+              u32 src_offs = imm;
+              u32 copy_len;
               DECODE_IMM(copy_len, 1);
-              uint32_t dst_offs = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
+              u32 dst_offs = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
               ASSERT_IN_OUTPUT_BOUNDS(dst_offs, copy_len);
               // reg_num == 0 copy from packet, reg_num == 1 copy from data.
               if (reg_num == 0) {
                   ASSERT_IN_PACKET_BOUNDS(src_offs);
-                  const uint32_t last_packet_offs = src_offs + copy_len - 1;
+                  const u32 last_packet_offs = src_offs + copy_len - 1;
                   ASSERT_RETURN(last_packet_offs >= src_offs);
                   ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
                   memmove(allocated_buffer + dst_offs, packet + src_offs,
