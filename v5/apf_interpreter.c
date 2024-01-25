@@ -678,26 +678,11 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                   DECODE_IMM(cmp_imm, cmp_imm_len);
               }
               switch (opcode) {
-                  case JEQ_OPCODE:
-                      if (registers[0] == cmp_imm)
-                          pc += imm;
-                      break;
-                  case JNE_OPCODE:
-                      if (registers[0] != cmp_imm)
-                          pc += imm;
-                      break;
-                  case JGT_OPCODE:
-                      if (registers[0] > cmp_imm)
-                          pc += imm;
-                      break;
-                  case JLT_OPCODE:
-                      if (registers[0] < cmp_imm)
-                          pc += imm;
-                      break;
-                  case JSET_OPCODE:
-                      if (registers[0] & cmp_imm)
-                          pc += imm;
-                      break;
+                  case JEQ_OPCODE:  if (registers[0] == cmp_imm) pc += imm; break;
+                  case JNE_OPCODE:  if (registers[0] != cmp_imm) pc += imm; break;
+                  case JGT_OPCODE:  if (registers[0] >  cmp_imm) pc += imm; break;
+                  case JLT_OPCODE:  if (registers[0] <  cmp_imm) pc += imm; break;
+                  case JSET_OPCODE: if (registers[0] &  cmp_imm) pc += imm; break;
                   case JNEBS_OPCODE: {
                       // cmp_imm is size in bytes of data to compare.
                       // pc is offset of program bytes to compare.
@@ -717,24 +702,16 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
               }
               break;
           }
-          case ADD_OPCODE:
-              registers[0] += reg_num ? registers[1] : imm;
-              break;
-          case MUL_OPCODE:
-              registers[0] *= reg_num ? registers[1] : imm;
-              break;
+          case ADD_OPCODE: registers[0] += reg_num ? registers[1] : imm; break;
+          case MUL_OPCODE: registers[0] *= reg_num ? registers[1] : imm; break;
+          case AND_OPCODE: registers[0] &= reg_num ? registers[1] : imm; break;
+          case OR_OPCODE:  registers[0] |= reg_num ? registers[1] : imm; break;
           case DIV_OPCODE: {
               const u32 div_operand = reg_num ? registers[1] : imm;
               ASSERT_RETURN(div_operand);
               registers[0] /= div_operand;
               break;
           }
-          case AND_OPCODE:
-              registers[0] &= reg_num ? registers[1] : imm;
-              break;
-          case OR_OPCODE:
-              registers[0] |= reg_num ? registers[1] : imm;
-              break;
           case SH_OPCODE: {
               const s32 shift_val = reg_num ? (s32)registers[1] : signed_imm;
               if (shift_val > 0)
@@ -760,21 +737,15 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
               } else if (imm >= STM_EXT_OPCODE && imm < (STM_EXT_OPCODE + MEMORY_ITEMS)) {
                 memory[imm - STM_EXT_OPCODE] = REG;
               } else switch (imm) {
-                  case NOT_EXT_OPCODE:
-                    REG = ~REG;
-                    break;
-                  case NEG_EXT_OPCODE:
-                    REG = -REG;
-                    break;
+                  case NOT_EXT_OPCODE: REG = ~REG;      break;
+                  case NEG_EXT_OPCODE: REG = -REG;      break;
+                  case MOV_EXT_OPCODE: REG = OTHER_REG; break;
                   case SWAP_EXT_OPCODE: {
                     u32 tmp = REG;
                     REG = OTHER_REG;
                     OTHER_REG = tmp;
                     break;
                   }
-                  case MOV_EXT_OPCODE:
-                    REG = OTHER_REG;
-                    break;
                   case ALLOC_EXT_OPCODE:
                     ASSERT_RETURN(allocated_buffer == NULL);
                     if (reg_num == 0) {
@@ -794,11 +765,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     // If pkt_len > allocate_buffer_len, it means sth. wrong
                     // happened and the allocated_buffer should be deallocated.
                     if (pkt_len > allocated_buffer_len) {
-                        apf_transmit_buffer(
-                            ctx,
-                            allocated_buffer,
-                            0 /* len */,
-                            0 /* dscp */);
+                        apf_transmit_buffer(ctx, allocated_buffer, 0 /* len */, 0 /* dscp */);
                         return PASS_PACKET;
                     }
                     // allocated_buffer_len cannot be large because we'd run out of RAM,
@@ -820,9 +787,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                                                 packet + udp_payload_offset,
                                                 packet_len - udp_payload_offset,
                                                 qtype);
-                    if (match_rst == -1) {
-                        return PASS_PACKET;
-                    }
+                    if (match_rst == -1) return PASS_PACKET;
                     while (!(program[pc] == 0 && program[pc + 1] == 0)) {
                         pc++;
                     }
@@ -834,14 +799,12 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     }
                     break;
                   }
-                  // Unknown extended opcode
-                  default:
-                    // Bail out
-                    return PASS_PACKET;
+                  default:  // Unknown extended opcode
+                    return PASS_PACKET;  // Bail out
               }
               break;
           case LDDW_OPCODE: {
-              u32 offs = OTHER_REG + (u32) signed_imm;
+              u32 offs = OTHER_REG + (u32)signed_imm;
               u32 size = 4;
               u32 val = 0;
               // Negative offsets wrap around the end of the address space.
@@ -857,7 +820,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
               break;
           }
           case STDW_OPCODE: {
-              u32 offs = OTHER_REG + (u32) signed_imm;
+              u32 offs = OTHER_REG + (u32)signed_imm;
               u32 size = 4;
               u32 val = REG;
               // Negative offsets wrap around the end of the address space.
@@ -902,21 +865,17 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                   const u32 last_packet_offs = src_offs + copy_len - 1;
                   ASSERT_RETURN(last_packet_offs >= src_offs);
                   ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
-                  memmove(allocated_buffer + dst_offs, packet + src_offs,
-                          copy_len);
+                  memmove(allocated_buffer + dst_offs, packet + src_offs, copy_len);
               } else {
                   ASSERT_IN_RAM_BOUNDS(src_offs + copy_len - 1);
-                  memmove(allocated_buffer + dst_offs, program + src_offs,
-                          copy_len);
+                  memmove(allocated_buffer + dst_offs, program + src_offs, copy_len);
               }
               dst_offs += copy_len;
               memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = dst_offs;
               break;
           }
-          // Unknown opcode
-          default:
-              // Bail out
-              return PASS_PACKET;
+          default:  // Unknown opcode
+              return PASS_PACKET;  // Bail out
       }
   } while (instructions_remaining--);
   return PASS_PACKET;
