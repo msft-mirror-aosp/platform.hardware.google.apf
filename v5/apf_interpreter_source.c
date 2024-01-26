@@ -281,7 +281,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     OTHER_REG = tmp;
                     break;
                   }
-                  case ALLOC_EXT_OPCODE:
+                  case ALLOCATE_EXT_OPCODE:
                     ASSERT_RETURN(allocated_buffer == NULL);
                     if (reg_num == 0) {
                         allocated_buffer_len = REG;
@@ -294,7 +294,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     ASSERT_RETURN(allocated_buffer != NULL);
                     memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = 0;
                     break;
-                  case TRANS_EXT_OPCODE:
+                  case TRANSMIT_EXT_OPCODE:
                     ASSERT_RETURN(allocated_buffer != NULL);
                     u32 pkt_len = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
                     // If pkt_len > allocate_buffer_len, it means sth. wrong
@@ -387,7 +387,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
               memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = offs;
               break;
           }
-          case MEMCOPY_OPCODE: {
+          case PKTDATACOPY_OPCODE: {
               ASSERT_RETURN(allocated_buffer != NULL);
               u32 src_offs = imm;
               u32 copy_len;
