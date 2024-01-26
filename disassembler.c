@@ -356,7 +356,7 @@ uint32_t apf_disassemble(const uint8_t* program, uint32_t program_len,
                     ASSERT_RET_INBOUND(ret);
                     offset += ret;
                     break;
-                case TRANSMIT_EXT_OPCODE:
+                case TRANSMITDISCARD_EXT_OPCODE:
                     ret = print_opcode("trans", output_buffer,
                                        output_buffer_len, offset);
                     ASSERT_RET_INBOUND(ret);
