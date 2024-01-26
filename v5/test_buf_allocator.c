@@ -33,7 +33,6 @@ uint8_t* apf_allocate_buffer(__attribute__ ((unused)) void* ctx, uint32_t size) 
   if (size > APF_TX_BUFFER_SIZE) {
     return NULL;
   }
-  memset(apf_test_buffer, 0, APF_TX_BUFFER_SIZE * sizeof(apf_test_buffer[0]));
   return apf_test_buffer;
 }
 

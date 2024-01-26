@@ -292,6 +292,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     if (allocated_buffer_len < 74) allocated_buffer_len = 74;
                     allocated_buffer = apf_allocate_buffer(ctx, allocated_buffer_len);
                     ASSERT_RETURN(allocated_buffer != NULL);
+                    memset(allocated_buffer, 0, allocated_buffer_len);
                     memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = 0;
                     break;
                   case TRANSMITDISCARD_EXT_OPCODE:
