@@ -19,11 +19,10 @@
 // TODO: Remove the dependency of the standard library and make the interpreter self-contained.
 #include <string.h>// For memcmp
 
-#include "apf.h"
-
 typedef enum { false, true } bool;
 
 #include "apf_defs.h"
+#include "apf.h"
 #include "apf_utils.h"
 #include "apf_dns.h"
 #include "apf_checksum.h"
