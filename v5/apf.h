@@ -204,8 +204,7 @@
  * "e.g. trans"
  * "e.g. discard"
  */
-#define TRANSMIT_EXT_OPCODE 37
-#define DISCARD_EXT_OPCODE 37
+#define TRANSMITDISCARD_EXT_OPCODE 37
 /* Write 1, 2 or 4 byte value from register to the output buffer and auto-increment the
  * output buffer pointer.
  * e.g. "ewrite1 r0"
