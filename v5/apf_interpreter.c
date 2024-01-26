@@ -814,6 +814,8 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     /* happened and the allocated_buffer should be deallocated. */
                     if (pkt_len > allocated_buffer_len) {
                         apf_transmit_buffer(ctx, allocated_buffer, 0 /* len */, 0 /* dscp */);
+                        allocated_buffer = NULL;
+                        allocated_buffer_len = 0;
                         return PASS_PACKET;
                     }
                     /* allocated_buffer_len cannot be large because we'd run out of RAM, */
@@ -821,10 +823,11 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     /* to a signed value does not result in it going negative. */
                     int dscp = calculate_checksum_and_return_dscp(allocated_buffer, (s32)pkt_len);
                     int ret = apf_transmit_buffer(ctx, allocated_buffer, pkt_len, dscp);
+                    allocated_buffer = NULL;
+                    allocated_buffer_len = 0;
                     if (ret) {
                       return PASS_PACKET;
                     }
-                    allocated_buffer = NULL;
                     break;
                   case JDNSQMATCH_EXT_OPCODE: {
                     const u32 imm_len = 1 << (len_field - 1);
