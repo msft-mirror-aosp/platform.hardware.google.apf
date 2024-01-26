@@ -143,8 +143,7 @@
  * This is more or less equivalent to: lddw R0, -N4; add R0,1; stdw R0, -N4; {pass,drop}
  * e.g. "pass", "pass 1", "drop", "drop 1".
  */
-#define PASS_OPCODE 0
-#define DROP_OPCODE 0
+#define PASSDROP_OPCODE 0
 #define LDB_OPCODE 1    // Load 1 byte from immediate offset, e.g. "ldb R0, [5]"
 #define LDH_OPCODE 2    // Load 2 bytes from immediate offset, e.g. "ldh R0, [5]"
 #define LDW_OPCODE 3    // Load 4 bytes from immediate offset, e.g. "ldw R0, [5]"
