@@ -820,7 +820,10 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     /* so the above unsigned comparison effectively guarantees casting pkt_len */
                     /* to a signed value does not result in it going negative. */
                     int dscp = calculate_checksum_and_return_dscp(allocated_buffer, (s32)pkt_len);
-                    apf_transmit_buffer(ctx, allocated_buffer, pkt_len, dscp);
+                    int ret = apf_transmit_buffer(ctx, allocated_buffer, pkt_len, dscp);
+                    if (ret) {
+                      return PASS_PACKET;
+                    }
                     allocated_buffer = NULL;
                     break;
                   case JDNSQMATCH_EXT_OPCODE: {
