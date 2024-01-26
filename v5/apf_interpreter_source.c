@@ -294,7 +294,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     ASSERT_RETURN(allocated_buffer != NULL);
                     memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = 0;
                     break;
-                  case TRANSMIT_EXT_OPCODE:
+                  case TRANSMITDISCARD_EXT_OPCODE:
                     ASSERT_RETURN(allocated_buffer != NULL);
                     u32 pkt_len = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
                     // If pkt_len > allocate_buffer_len, it means sth. wrong

@@ -226,8 +226,7 @@
  * "e.g. trans"
  * "e.g. discard"
  */
-#define TRANSMIT_EXT_OPCODE 37
-#define DISCARD_EXT_OPCODE 37
+#define TRANSMITDISCARD_EXT_OPCODE 37
 /* Write 1, 2 or 4 byte value from register to the output buffer and auto-increment the
  * output buffer pointer.
  * e.g. "ewrite1 r0"
@@ -807,7 +806,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     ASSERT_RETURN(allocated_buffer != NULL);
                     memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = 0;
                     break;
-                  case TRANSMIT_EXT_OPCODE:
+                  case TRANSMITDISCARD_EXT_OPCODE:
                     ASSERT_RETURN(allocated_buffer != NULL);
                     u32 pkt_len = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
                     /* If pkt_len > allocate_buffer_len, it means sth. wrong */
