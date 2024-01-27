@@ -91,6 +91,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
   mem.named.ram_len = ram_len;
   mem.named.packet_size = packet_len;
   mem.named.filter_age = filter_age_16384ths >> 14;
+  mem.named.filter_age_16384ths = filter_age_16384ths;
   ASSERT_IN_PACKET_BOUNDS(APF_FRAME_HEADER_SIZE);
   // Only populate if IP version is IPv4.
   if ((packet[APF_FRAME_HEADER_SIZE] & 0xf0) == 0x40) {
