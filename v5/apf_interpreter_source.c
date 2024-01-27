@@ -105,13 +105,13 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
   u32 instructions_remaining = program_len;
 
   // The output buffer pointer
-  u8* allocated_buffer = NULL;
+  u8* tx_buf = NULL;
   // The length of the output buffer
-  u32 allocated_buffer_len = 0;
+  u32 tx_buf_len = 0;
 // Is access to offset |p| length |size| within output buffer bounds?
 #define IN_OUTPUT_BOUNDS(p, size) (ENFORCE_UNSIGNED(p) && \
                                  ENFORCE_UNSIGNED(size) && \
-                                 (p) + (size) <= allocated_buffer_len && \
+                                 (p) + (size) <= tx_buf_len && \
                                  (p) + (size) >= (p))
 // Accept packet if not write within allocated output buffer
 #define ASSERT_IN_OUTPUT_BOUNDS(p, size) ASSERT_RETURN(IN_OUTPUT_BOUNDS(p, size))
@@ -281,37 +281,37 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     break;
                   }
                   case ALLOCATE_EXT_OPCODE:
-                    ASSERT_RETURN(allocated_buffer == NULL);
+                    ASSERT_RETURN(tx_buf == NULL);
                     if (reg_num == 0) {
-                        allocated_buffer_len = REG;
+                        tx_buf_len = REG;
                     } else {
-                        DECODE_IMM(allocated_buffer_len, 2);
+                        DECODE_IMM(tx_buf_len, 2);
                     }
                     // checksumming functions requires minimum 74 byte buffer for correctness
-                    if (allocated_buffer_len < 74) allocated_buffer_len = 74;
-                    allocated_buffer = apf_allocate_buffer(ctx, allocated_buffer_len);
-                    ASSERT_RETURN(allocated_buffer != NULL);
-                    memset(allocated_buffer, 0, allocated_buffer_len);
+                    if (tx_buf_len < 74) tx_buf_len = 74;
+                    tx_buf = apf_allocate_buffer(ctx, tx_buf_len);
+                    ASSERT_RETURN(tx_buf != NULL);
+                    memset(tx_buf, 0, tx_buf_len);
                     memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = 0;
                     break;
                   case TRANSMITDISCARD_EXT_OPCODE:
-                    ASSERT_RETURN(allocated_buffer != NULL);
+                    ASSERT_RETURN(tx_buf != NULL);
                     u32 pkt_len = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
                     // If pkt_len > allocate_buffer_len, it means sth. wrong
-                    // happened and the allocated_buffer should be deallocated.
-                    if (pkt_len > allocated_buffer_len) {
-                        apf_transmit_buffer(ctx, allocated_buffer, 0 /* len */, 0 /* dscp */);
-                        allocated_buffer = NULL;
-                        allocated_buffer_len = 0;
+                    // happened and the tx_buf should be deallocated.
+                    if (pkt_len > tx_buf_len) {
+                        apf_transmit_buffer(ctx, tx_buf, 0 /* len */, 0 /* dscp */);
+                        tx_buf = NULL;
+                        tx_buf_len = 0;
                         return PASS_PACKET;
                     }
-                    // allocated_buffer_len cannot be large because we'd run out of RAM,
+                    // tx_buf_len cannot be large because we'd run out of RAM,
                     // so the above unsigned comparison effectively guarantees casting pkt_len
                     // to a signed value does not result in it going negative.
-                    int dscp = calculate_checksum_and_return_dscp(allocated_buffer, (s32)pkt_len);
-                    int ret = apf_transmit_buffer(ctx, allocated_buffer, pkt_len, dscp);
-                    allocated_buffer = NULL;
-                    allocated_buffer_len = 0;
+                    int dscp = calculate_checksum_and_return_dscp(tx_buf, (s32)pkt_len);
+                    int ret = apf_transmit_buffer(ctx, tx_buf, pkt_len, dscp);
+                    tx_buf = NULL;
+                    tx_buf_len = 0;
                     if (ret) {
                       return PASS_PACKET;
                     }
@@ -378,7 +378,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
               break;
           }
           case WRITE_OPCODE: {
-              ASSERT_RETURN(allocated_buffer != NULL);
+              ASSERT_RETURN(tx_buf != NULL);
               ASSERT_RETURN(len_field > 0);
               u32 offs = memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET];
               const u32 write_len = 1 << (len_field - 1);
@@ -386,7 +386,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
               ASSERT_IN_OUTPUT_BOUNDS(offs, write_len);
               u32 i;
               for (i = 0; i < write_len; ++i) {
-                  *(allocated_buffer + offs) =
+                  *(tx_buf + offs) =
                       (u8) ((imm >> (write_len - 1 - i) * 8) & 0xff);
                   offs++;
               }
@@ -394,7 +394,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
               break;
           }
           case PKTDATACOPY_OPCODE: {
-              ASSERT_RETURN(allocated_buffer != NULL);
+              ASSERT_RETURN(tx_buf != NULL);
               u32 src_offs = imm;
               u32 copy_len;
               DECODE_IMM(copy_len, 1);
@@ -406,10 +406,10 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                   const u32 last_packet_offs = src_offs + copy_len - 1;
                   ASSERT_RETURN(last_packet_offs >= src_offs);
                   ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
-                  memmove(allocated_buffer + dst_offs, packet + src_offs, copy_len);
+                  memmove(tx_buf + dst_offs, packet + src_offs, copy_len);
               } else {
                   ASSERT_IN_RAM_BOUNDS(src_offs + copy_len - 1);
-                  memmove(allocated_buffer + dst_offs, program + src_offs, copy_len);
+                  memmove(tx_buf + dst_offs, program + src_offs, copy_len);
               }
               dst_offs += copy_len;
               memory[MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET] = dst_offs;
