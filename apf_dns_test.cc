@@ -146,12 +146,12 @@ TEST(ApfDnsTest, MatchNamesInAnswers) {
         0x43, 0x41, 0x4c, 0x00, 0x00
     };
     EXPECT_EQ(match_names(needles_match2, needles_match2 + sizeof(needles_match2), udp_payload, sizeof(udp_payload), -1), match);
-    // target names = { C.LOCAL }
-    const uint8_t needle3[] = {
+    // needles = { C.LOCAL }
+    const uint8_t needles_nomatch[] = {
         0x01, 0x43, 0x05, 0x4c, 0x4f, 0x43, 0x41, 0x4c,
         0x00, 0x00
     };
-    EXPECT_EQ(match_names(needle3, needle3 + sizeof(needle3), udp_payload, sizeof(udp_payload), -1), nomatch);
+    EXPECT_EQ(match_names(needles_nomatch, needles_nomatch + sizeof(needles_nomatch), udp_payload, sizeof(udp_payload), -1), nomatch);
 }
 
 } // namespace apf
