@@ -28,11 +28,10 @@ TEST(ApfChecksumTest, CalcIPv4UDPChecksum) {
     uint8_t dscp = calculate_checksum_and_return_dscp(ether_ipv4_udp_pkt, sizeof(ether_ipv4_udp_pkt));
     EXPECT_EQ(dscp, 0);
     // Verify IPv4 header checksum
-    EXPECT_EQ(ether_ipv4_udp_pkt[24], 0x95);
-    EXPECT_EQ(ether_ipv4_udp_pkt[25], 0x39);
+    EXPECT_EQ(read_be16(ether_ipv4_udp_pkt + 24), 0x9539);
+
     // verify UDP checksum
-    EXPECT_EQ(ether_ipv4_udp_pkt[40], 0xa7);
-    EXPECT_EQ(ether_ipv4_udp_pkt[41], 0x3d);
+    EXPECT_EQ(read_be16(ether_ipv4_udp_pkt + 40), 0xa73d);
 }
 
 TEST(ApfChecksumTest, CalcIPv6UDPChecksum) {
@@ -57,8 +56,7 @@ TEST(ApfChecksumTest, CalcIPv6UDPChecksum) {
     uint8_t dscp = calculate_checksum_and_return_dscp(ether_ipv6_udp_pkt, sizeof(ether_ipv6_udp_pkt));
     EXPECT_EQ(dscp, 0);
     // verify UDP checksum
-    EXPECT_EQ(ether_ipv6_udp_pkt[60], 0x1c);
-    EXPECT_EQ(ether_ipv6_udp_pkt[61], 0xbd);
+    EXPECT_EQ(read_be16(ether_ipv6_udp_pkt + 60), 0x1cbd);
 }
 
 TEST(ApfChecksumTest, CalcICMPv6Checksum) {
@@ -80,8 +78,7 @@ TEST(ApfChecksumTest, CalcICMPv6Checksum) {
     uint8_t dscp = calculate_checksum_and_return_dscp(ether_ipv6_icmp6_pkt, sizeof(ether_ipv6_icmp6_pkt));
     EXPECT_EQ(dscp, 0);
     // verify layer 4 checksum
-    EXPECT_EQ(ether_ipv6_icmp6_pkt[56], 0x8a);
-    EXPECT_EQ(ether_ipv6_icmp6_pkt[57], 0x09);
+    EXPECT_EQ(read_be16(ether_ipv6_icmp6_pkt + 56), 0x8a09);
 }
 
 }  // namespace apf
