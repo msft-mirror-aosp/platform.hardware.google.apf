@@ -17,6 +17,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
+typedef enum { false, true } bool;
+
+#include "v5/apf_defs.h"
 #include "v5/apf.h"
 
 // If "c" is of a signed type, generate a compile warning that gets promoted to an error.
@@ -356,7 +359,7 @@ uint32_t apf_disassemble(const uint8_t* program, uint32_t program_len,
                     ASSERT_RET_INBOUND(ret);
                     offset += ret;
                     break;
-                case TRANSMIT_EXT_OPCODE:
+                case TRANSMITDISCARD_EXT_OPCODE:
                     ret = print_opcode("trans", output_buffer,
                                        output_buffer_len, offset);
                     ASSERT_RET_INBOUND(ret);
