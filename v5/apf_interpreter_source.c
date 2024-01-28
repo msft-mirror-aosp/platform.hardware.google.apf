@@ -330,7 +330,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                                                 packet_len - udp_payload_offset,
                                                 qtype);
                     if (match_rst == -1) return PASS_PACKET;
-                    while (!(program[pc] == 0 && program[pc + 1] == 0)) {
+                    while (pc + 1 < program_len && !(program[pc] == 0 && program[pc + 1] == 0)) {
                         pc++;
                     }
                     pc += 2;
