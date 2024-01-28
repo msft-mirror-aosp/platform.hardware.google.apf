@@ -19,7 +19,7 @@
 #ifndef TEST_BUF_ALLOCATOR
 #define TEST_BUF_ALLOCATOR
 
-#define APF_TX_BUFFER_SIZE 1500
+#define APF_TX_BUFFER_SIZE 1514
 
 extern uint8_t apf_test_buffer[APF_TX_BUFFER_SIZE];
 extern uint32_t apf_test_tx_packet_len;
