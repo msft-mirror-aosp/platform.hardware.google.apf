@@ -129,6 +129,16 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
         signed_imm >>= (4 - imm_len) * 8;
     }
     switch (opcode) {
+        case PASSDROP_OPCODE:
+            if (reg_num == 0) {
+                print_opcode("pass");
+            } else {
+                print_opcode("drop");
+            }
+            if (len_field > 0) {
+                bprintf(" %d", imm);
+            }
+            break;
         case LDB_OPCODE:
         case LDH_OPCODE:
         case LDW_OPCODE:
