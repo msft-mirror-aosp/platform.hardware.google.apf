@@ -247,8 +247,14 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                     bprintf("r%d, r%d", reg_num, reg_num ^ 1);
                     break;
                 case ALLOCATE_EXT_OPCODE:
-                    print_opcode("alloc");
-                    bprintf("r%d", reg_num);
+                    print_opcode("allocate");
+                    if (reg_num == 0) {
+                        bprintf("r%d", reg_num);
+                    } else {
+                        uint32_t alloc_len = 0;
+                        DECODE_IMM(alloc_len, 2);
+                        bprintf("%d", alloc_len);
+                    }
                     break;
                 case TRANSMITDISCARD_EXT_OPCODE:
                     print_opcode("trans");
