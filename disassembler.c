@@ -257,8 +257,11 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                     }
                     break;
                 case TRANSMITDISCARD_EXT_OPCODE:
-                    print_opcode("trans");
-                    bprintf("r%d", reg_num);
+                    if (reg_num == 0) {
+                        print_opcode("discard");
+                    } else  {
+                        print_opcode("transmit");
+                    }
                     break;
                 case EWRITE1_EXT_OPCODE:
                 case EWRITE2_EXT_OPCODE:
