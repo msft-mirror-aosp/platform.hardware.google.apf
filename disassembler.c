@@ -327,12 +327,10 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             } else {
                 print_opcode("dcopy");
             }
-            if (len_field > 0) {
-                uint32_t src_offs = imm;
-                uint32_t copy_len = 0;
-                DECODE_IMM(copy_len, 1);
-                bprintf("%d, %d", src_offs, copy_len);
-            }
+            uint32_t src_offs = imm;
+            uint32_t copy_len = 0;
+            DECODE_IMM(copy_len, 1);
+            bprintf("%d, %d", src_offs, copy_len);
             break;
         }
         // Unknown opcode
