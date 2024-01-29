@@ -135,7 +135,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             } else {
                 print_opcode("drop");
             }
-            if (len_field > 0) {
+            if (imm > 0) {
                 bprintf(" %d", imm);
             }
             break;
