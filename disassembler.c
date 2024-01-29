@@ -29,7 +29,7 @@ typedef enum { false, true } bool;
 // superfluous ">= 0" with unsigned expressions generates compile warnings.
 #define ENFORCE_UNSIGNED(c) ((c)==(uint32_t)(c))
 
-char print_buf[512];
+char print_buf[1024];
 char* buf_ptr;
 int buf_remain;
 
@@ -156,8 +156,15 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             }
             break;
         case JMP_OPCODE:
-            PRINT_OPCODE();
-            print_jump_target(*pc + imm, program_len);
+            if (reg_num == 0) {
+                PRINT_OPCODE();
+                print_jump_target(*pc + imm, program_len);
+            } else {
+                print_opcode("data");
+                bprintf("%d,", imm);
+                uint32_t len = imm;
+                while (len--) bprintf("%02x", program[(*pc)++]);
+            }
             break;
         case JEQ_OPCODE:
         case JNE_OPCODE:
