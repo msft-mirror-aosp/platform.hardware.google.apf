@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <stdint.h>
 #include <gtest/gtest.h>
 #include <linux/icmpv6.h>
@@ -12,12 +13,15 @@
 namespace apf {
 
 #define htons(x) __builtin_bswap16(x)
+#define packed __attribute__((packed))
+
+
 
 TEST(ApfChecksumTest, CalcIPv4UDPChecksum) {
     // An IPv4 UDP packet with IPv4 header checksum and UDP checksum set to 0
-    union {
+    union packed {
         uint8_t data[77];
-        struct __attribute__((packed)) {
+        struct packed {
           struct ethhdr ethhdr;
           struct iphdr iphdr;
           struct udphdr udphdr;
@@ -47,20 +51,20 @@ TEST(ApfChecksumTest, CalcIPv4UDPChecksum) {
     }};
     // Set the UDP checksum to UDP payload size
     ether_ipv4_udp_pkt.pkt.udphdr.check = htons(sizeof(ether_ipv4_udp_pkt) - IPV4_HLEN - ETH_HLEN);
-    uint8_t dscp = calculate_checksum_and_return_dscp(ether_ipv4_udp_pkt.data, sizeof(ether_ipv4_udp_pkt));
+    uint8_t dscp = calculate_checksum_and_return_dscp((uint8_t *)&ether_ipv4_udp_pkt, sizeof(ether_ipv4_udp_pkt));
     EXPECT_EQ(dscp, 0);
     // Verify IPv4 header checksum
-    EXPECT_EQ(read_be16(ether_ipv4_udp_pkt.data + 24), 0x9539);
+    EXPECT_EQ(read_be16((uint8_t *)&ether_ipv4_udp_pkt.pkt.iphdr.check), 0x9539);
 
     // verify UDP checksum
-    EXPECT_EQ(read_be16(ether_ipv4_udp_pkt.data + 40), 0xa73d);
+    EXPECT_EQ(read_be16((uint8_t *)&ether_ipv4_udp_pkt.pkt.udphdr.check), 0xa73d);
 }
 
 TEST(ApfChecksumTest, CalcIPv6UDPChecksum) {
     // An IPv6 UDP packet with UDP checksum set to 0
-    union {
+    union packed {
         uint8_t data[97];
-        struct __attribute__((packed)) {
+        struct packed {
           struct ethhdr ethhdr;
           struct ipv6hdr ipv6hdr;
           struct udphdr udphdr;
@@ -86,17 +90,17 @@ TEST(ApfChecksumTest, CalcIPv6UDPChecksum) {
     }};
     // Set the UDP checksum to UDP payload size
     ether_ipv6_udp_pkt.pkt.udphdr.check = htons(sizeof(ether_ipv6_udp_pkt) - IPV6_HLEN - ETH_HLEN);
-    uint8_t dscp = calculate_checksum_and_return_dscp(ether_ipv6_udp_pkt.data, sizeof(ether_ipv6_udp_pkt));
+    uint8_t dscp = calculate_checksum_and_return_dscp((uint8_t *)&ether_ipv6_udp_pkt, sizeof(ether_ipv6_udp_pkt));
     EXPECT_EQ(dscp, 0);
     // verify UDP checksum
-    EXPECT_EQ(read_be16(ether_ipv6_udp_pkt.data + 60), 0x1cbd);
+    EXPECT_EQ(read_be16((uint8_t *)&ether_ipv6_udp_pkt.pkt.udphdr.check), 0x1cbd);
 }
 
 TEST(ApfChecksumTest, CalcICMPv6Checksum) {
     // An ICMPv6 packet with checksum field set to 0
-    union {
+    union packed {
         uint8_t data[78];
-        struct __attribute__((packed)) {
+        struct packed {
           struct ethhdr ethhdr;
           struct ipv6hdr ipv6hdr;
           struct icmp6hdr icmp6hdr;
@@ -120,10 +124,10 @@ TEST(ApfChecksumTest, CalcICMPv6Checksum) {
     }};
     // Set the ICMPv6 checksum to ICMPv6 payload size
     ether_ipv6_icmp6_pkt.pkt.icmp6hdr.icmp6_cksum = htons(sizeof(ether_ipv6_icmp6_pkt) - IPV6_HLEN - ETH_HLEN);
-    uint8_t dscp = calculate_checksum_and_return_dscp(ether_ipv6_icmp6_pkt.data, sizeof(ether_ipv6_icmp6_pkt));
+    uint8_t dscp = calculate_checksum_and_return_dscp((uint8_t *)&ether_ipv6_icmp6_pkt, sizeof(ether_ipv6_icmp6_pkt));
     EXPECT_EQ(dscp, 0);
     // verify layer 4 checksum
-    EXPECT_EQ(read_be16(ether_ipv6_icmp6_pkt.data + 56), 0x8a09);
+    EXPECT_EQ(read_be16((uint8_t *)&ether_ipv6_icmp6_pkt.pkt.icmp6hdr.icmp6_cksum), 0x8a09);
 }
 
 }  // namespace apf

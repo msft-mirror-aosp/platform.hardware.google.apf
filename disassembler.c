@@ -29,7 +29,7 @@ typedef enum { false, true } bool;
 // superfluous ">= 0" with unsigned expressions generates compile warnings.
 #define ENFORCE_UNSIGNED(c) ((c)==(uint32_t)(c))
 
-char print_buf[512];
+char print_buf[1024];
 char* buf_ptr;
 int buf_remain;
 
@@ -129,6 +129,16 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
         signed_imm >>= (4 - imm_len) * 8;
     }
     switch (opcode) {
+        case PASSDROP_OPCODE:
+            if (reg_num == 0) {
+                print_opcode("pass");
+            } else {
+                print_opcode("drop");
+            }
+            if (imm > 0) {
+                bprintf(" %d", imm);
+            }
+            break;
         case LDB_OPCODE:
         case LDH_OPCODE:
         case LDW_OPCODE:
@@ -146,8 +156,15 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             }
             break;
         case JMP_OPCODE:
-            PRINT_OPCODE();
-            print_jump_target(*pc + imm, program_len);
+            if (reg_num == 0) {
+                PRINT_OPCODE();
+                print_jump_target(*pc + imm, program_len);
+            } else {
+                print_opcode("data");
+                bprintf("%d,", imm);
+                uint32_t len = imm;
+                while (len--) bprintf("%02x", program[(*pc)++]);
+            }
             break;
         case JEQ_OPCODE:
         case JNE_OPCODE:
@@ -237,20 +254,25 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                     bprintf("r%d, r%d", reg_num, reg_num ^ 1);
                     break;
                 case ALLOCATE_EXT_OPCODE:
-                    print_opcode("alloc");
-                    bprintf("r%d", reg_num);
+                    print_opcode("allocate");
+                    if (reg_num == 0) {
+                        bprintf("r%d", reg_num);
+                    } else {
+                        uint32_t alloc_len = 0;
+                        DECODE_IMM(alloc_len, 2);
+                        bprintf("%d", alloc_len);
+                    }
                     break;
                 case TRANSMITDISCARD_EXT_OPCODE:
-                    print_opcode("trans");
-                    bprintf("r%d", reg_num);
+                    if (reg_num == 0) {
+                        print_opcode("discard");
+                    } else  {
+                        print_opcode("transmit");
+                    }
                     break;
-                case EWRITE1_EXT_OPCODE:
-                case EWRITE2_EXT_OPCODE:
-                case EWRITE4_EXT_OPCODE: {
-                    print_opcode("write");
-                    bprintf("r%d, %d", reg_num, 1 << (imm - EWRITE1_EXT_OPCODE));
-                    break;
-                }
+                case EWRITE1_EXT_OPCODE: print_opcode("ewrite1"); bprintf("r%d", reg_num); break;
+                case EWRITE2_EXT_OPCODE: print_opcode("ewrite2"); bprintf("r%d", reg_num); break;
+                case EWRITE4_EXT_OPCODE: print_opcode("ewrite4"); bprintf("r%d", reg_num); break;
                 case EDATACOPY_EXT_OPCODE:
                 case EPKTCOPY_EXT_OPCODE: {
                     if (imm == EPKTCOPY_EXT_OPCODE) {
@@ -305,12 +327,10 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             } else {
                 print_opcode("dcopy");
             }
-            if (len_field > 0) {
-                uint32_t src_offs = imm;
-                uint32_t copy_len = 0;
-                DECODE_IMM(copy_len, 1);
-                bprintf("%d, %d", src_offs, copy_len);
-            }
+            uint32_t src_offs = imm;
+            uint32_t copy_len = 0;
+            DECODE_IMM(copy_len, 1);
+            bprintf("%d, %d", src_offs, copy_len);
             break;
         }
         // Unknown opcode
