@@ -161,7 +161,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 print_jump_target(*pc + imm, program_len);
             } else {
                 print_opcode("data");
-                bprintf("%d,", imm);
+                bprintf("%d, ", imm);
                 uint32_t len = imm;
                 while (len--) bprintf("%02x", program[(*pc)++]);
             }
