@@ -170,8 +170,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
         case JNE_OPCODE:
         case JGT_OPCODE:
         case JLT_OPCODE:
-        case JSET_OPCODE:
-        case JNEBS_OPCODE: {
+        case JSET_OPCODE: {
             PRINT_OPCODE();
             bprintf("r0, ");
             // Load second immediate field.
@@ -184,15 +183,24 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 DECODE_IMM(cmp_imm, 1 << (len_field - 1));
                 bprintf("0x%x, ", cmp_imm);
             }
-            if (opcode == JNEBS_OPCODE) {
-                print_jump_target(*pc + imm + cmp_imm, program_len);
-                bprintf(", ");
-                while (cmp_imm--) {
-                    uint8_t byte = program[(*pc)++];
-                    bprintf("%02x", byte);
-                }
+            print_jump_target(*pc + imm, program_len);
+            break;
+        }
+        case JNEBS_OPCODE: {
+            if (reg_num == 0) {
+                PRINT_OPCODE();
             } else {
-                print_jump_target(*pc + imm, program_len);
+                print_opcode("jebs");
+            }
+            bprintf("r0, ");
+            uint32_t cmp_imm = 0;
+            DECODE_IMM(cmp_imm, 1 << (len_field - 1));
+            bprintf("0x%x, ", cmp_imm);
+            print_jump_target(*pc + imm + cmp_imm, program_len);
+            bprintf(", ");
+            while (cmp_imm--) {
+                uint8_t byte = program[(*pc)++];
+                bprintf("%02x", byte);
             }
             break;
         }
