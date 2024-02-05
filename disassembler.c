@@ -298,6 +298,30 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
 
                     break;
                 }
+                case JDNSQMATCH_EXT_OPCODE: {
+                    if (reg_num == 0) {
+                        print_opcode("jdnsqne");
+                    } else {
+                        print_opcode("jdnsqeq");
+                    }
+                    bprintf("r0, ");
+                    uint32_t offs = 0;
+                    DECODE_IMM(offs, 1 << (len_field - 1));
+                    uint16_t qtype = 0;
+                    DECODE_IMM(qtype, 1);
+                    uint32_t end = *pc;
+                    while (end + 1 < program_len && !(program[end] == 0 && program[end + 1] == 0)) {
+                        end++;
+                    }
+                    end += 2;
+                    print_jump_target(end + offs, program_len);
+                    bprintf(", %d, ", qtype);
+                    while (*pc < end) {
+                        uint8_t byte = program[(*pc)++];
+                        bprintf("%02x", byte);
+                    }
+                    break;
+                }
                 default:
                     bprintf("unknown_ext %u", imm);
                     break;
