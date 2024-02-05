@@ -289,8 +289,8 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                         print_opcode("edatacopy");
                     }
                     if (imm == EPKTDATACOPYIMM_EXT_OPCODE) {
-                      uint32_t len = 0;
-                      DECODE_IMM(len, 1);
+                        uint32_t len = 0;
+                        DECODE_IMM(len, 1);
                         bprintf(" r0, %d", len);
                     } else {
                         bprintf(" r0, r1");
