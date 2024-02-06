@@ -86,35 +86,35 @@ static void print_jump_target(uint32_t target, uint32_t program_len) {
     }
 }
 
-const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t* const pc) {
+const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t* const ptr2pc) {
     buf_ptr = print_buf;
     buf_remain = sizeof(print_buf);
-    if (*pc > program_len + 1) {
-        bprintf("pc is overflow: pc %d, program_len: %d", *pc, program_len);
+    if (*ptr2pc > program_len + 1) {
+        bprintf("pc is overflow: pc %d, program_len: %d", *ptr2pc, program_len);
         return print_buf;
     }
 
-    bprintf("%8u: ", *pc);
+    bprintf("%8u: ", *ptr2pc);
 
-    if (*pc == program_len) {
+    if (*ptr2pc == program_len) {
         bprintf("PASS");
-        ++(*pc);
+        ++(*ptr2pc);
         return print_buf;
     }
 
-    if (*pc == program_len + 1) {
+    if (*ptr2pc == program_len + 1) {
         bprintf("DROP");
-        ++(*pc);
+        ++(*ptr2pc);
         return print_buf;
     }
 
-    const uint8_t bytecode = program[(*pc)++];
+    const uint8_t bytecode = program[(*ptr2pc)++];
     const uint32_t opcode = EXTRACT_OPCODE(bytecode);
 
 #define PRINT_OPCODE() print_opcode(opcode_names[opcode])
 #define DECODE_IMM(value, length)                                              \
-    for (uint32_t i = 0; i < (length) && *pc < program_len; i++)               \
-        value = (value << 8) | program[(*pc)++]
+    for (uint32_t i = 0; i < (length) && *ptr2pc < program_len; i++)               \
+        value = (value << 8) | program[(*ptr2pc)++]
 
     const uint32_t reg_num = EXTRACT_REGISTER(bytecode);
     // All instructions have immediate fields, so load them now.
@@ -158,12 +158,12 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
         case JMP_OPCODE:
             if (reg_num == 0) {
                 PRINT_OPCODE();
-                print_jump_target(*pc + imm, program_len);
+                print_jump_target(*ptr2pc + imm, program_len);
             } else {
                 print_opcode("data");
                 bprintf("%d, ", imm);
                 uint32_t len = imm;
-                while (len--) bprintf("%02x", program[(*pc)++]);
+                while (len--) bprintf("%02x", program[(*ptr2pc)++]);
             }
             break;
         case JEQ_OPCODE:
@@ -183,7 +183,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 DECODE_IMM(cmp_imm, 1 << (len_field - 1));
                 bprintf("0x%x, ", cmp_imm);
             }
-            print_jump_target(*pc + imm, program_len);
+            print_jump_target(*ptr2pc + imm, program_len);
             break;
         }
         case JBSMATCH_OPCODE: {
@@ -196,10 +196,10 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             uint32_t cmp_imm = 0;
             DECODE_IMM(cmp_imm, 1 << (len_field - 1));
             bprintf("0x%x, ", cmp_imm);
-            print_jump_target(*pc + imm + cmp_imm, program_len);
+            print_jump_target(*ptr2pc + imm + cmp_imm, program_len);
             bprintf(", ");
             while (cmp_imm--) {
-                uint8_t byte = program[(*pc)++];
+                uint8_t byte = program[(*ptr2pc)++];
                 bprintf("%02x", byte);
             }
             break;
@@ -309,15 +309,15 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                     DECODE_IMM(offs, 1 << (len_field - 1));
                     uint16_t qtype = 0;
                     DECODE_IMM(qtype, 1);
-                    uint32_t end = *pc;
+                    uint32_t end = *ptr2pc;
                     while (end + 1 < program_len && !(program[end] == 0 && program[end + 1] == 0)) {
                         end++;
                     }
                     end += 2;
                     print_jump_target(end + offs, program_len);
                     bprintf(", %d, ", qtype);
-                    while (*pc < end) {
-                        uint8_t byte = program[(*pc)++];
+                    while (*ptr2pc < end) {
+                        uint8_t byte = program[(*ptr2pc)++];
                         bprintf("%02x", byte);
                     }
                     break;
