@@ -112,9 +112,11 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
     const uint32_t opcode = EXTRACT_OPCODE(bytecode);
 
 #define PRINT_OPCODE() print_opcode(opcode_names[opcode])
-#define DECODE_IMM(value, length)                                              \
-    for (uint32_t i = 0; i < (length) && *ptr2pc < program_len; i++)               \
-        value = (value << 8) | program[(*ptr2pc)++]
+#define DECODE_IMM(length)  ({                                        \
+    uint32_t value = 0;                                               \
+    for (uint32_t i = 0; i < (length) && *ptr2pc < program_len; i++)  \
+        value = (value << 8) | program[(*ptr2pc)++];                  \
+    value;})
 
     const uint32_t reg_num = EXTRACT_REGISTER(bytecode);
     // All instructions have immediate fields, so load them now.
@@ -123,7 +125,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
     int32_t signed_imm = 0;
     if (len_field != 0) {
         const uint32_t imm_len = 1 << (len_field - 1);
-        DECODE_IMM(imm, imm_len);
+        imm = DECODE_IMM(imm_len);
         // Sign extend imm into signed_imm.
         signed_imm = imm << ((4 - imm_len) * 8);
         signed_imm >>= (4 - imm_len) * 8;
@@ -174,13 +176,12 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             PRINT_OPCODE();
             bprintf("r0, ");
             // Load second immediate field.
-            uint32_t cmp_imm = 0;
             if (reg_num == 1) {
                 bprintf("r1, ");
             } else if (len_field == 0) {
                 bprintf("0, ");
             } else {
-                DECODE_IMM(cmp_imm, 1 << (len_field - 1));
+                uint32_t cmp_imm = DECODE_IMM(1 << (len_field - 1));
                 bprintf("0x%x, ", cmp_imm);
             }
             print_jump_target(*ptr2pc + imm, program_len);
@@ -193,8 +194,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 print_opcode("jbseq");
             }
             bprintf("r0, ");
-            uint32_t cmp_imm = 0;
-            DECODE_IMM(cmp_imm, 1 << (len_field - 1));
+            uint32_t cmp_imm = DECODE_IMM(1 << (len_field - 1));
             bprintf("0x%x, ", cmp_imm);
             print_jump_target(*ptr2pc + imm + cmp_imm, program_len);
             bprintf(", ");
@@ -266,8 +266,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                     if (reg_num == 0) {
                         bprintf("r%d", reg_num);
                     } else {
-                        uint32_t alloc_len = 0;
-                        DECODE_IMM(alloc_len, 2);
+                        uint32_t alloc_len = DECODE_IMM(2);
                         bprintf("%d", alloc_len);
                     }
                     break;
@@ -289,8 +288,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                         print_opcode("edatacopy");
                     }
                     if (imm == EPKTDATACOPYIMM_EXT_OPCODE) {
-                        uint32_t len = 0;
-                        DECODE_IMM(len, 1);
+                        uint32_t len = DECODE_IMM(1);
                         bprintf(" r0, %d", len);
                     } else {
                         bprintf(" r0, r1");
@@ -305,10 +303,8 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                         print_opcode("jdnsqeq");
                     }
                     bprintf("r0, ");
-                    uint32_t offs = 0;
-                    DECODE_IMM(offs, 1 << (len_field - 1));
-                    uint16_t qtype = 0;
-                    DECODE_IMM(qtype, 1);
+                    uint32_t offs = DECODE_IMM(1 << (len_field - 1));
+                    uint16_t qtype = DECODE_IMM(1);
                     uint32_t end = *ptr2pc;
                     while (end + 1 < program_len && !(program[end] == 0 && program[end + 1] == 0)) {
                         end++;
@@ -359,8 +355,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 print_opcode("dcopy");
             }
             uint32_t src_offs = imm;
-            uint32_t copy_len = 0;
-            DECODE_IMM(copy_len, 1);
+            uint32_t copy_len = DECODE_IMM(1);
             bprintf("%d, %d", src_offs, copy_len);
             break;
         }
