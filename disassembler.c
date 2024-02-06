@@ -70,7 +70,7 @@ static const char* opcode_names [] = {
     [JGT_OPCODE] = "jgt",
     [JLT_OPCODE] = "jlt",
     [JSET_OPCODE] = "jset",
-    [JNEBS_OPCODE] = "jnebs",
+    [JBSMATCH_OPCODE] = NULL,
     [LDDW_OPCODE] = "lddw",
     [STDW_OPCODE] = "stdw",
     [WRITE_OPCODE] = "write",
@@ -186,11 +186,11 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             print_jump_target(*pc + imm, program_len);
             break;
         }
-        case JNEBS_OPCODE: {
+        case JBSMATCH_OPCODE: {
             if (reg_num == 0) {
-                PRINT_OPCODE();
+                print_opcode("jbsne");
             } else {
-                print_opcode("jebs");
+                print_opcode("jbseq");
             }
             bprintf("r0, ");
             uint32_t cmp_imm = 0;
