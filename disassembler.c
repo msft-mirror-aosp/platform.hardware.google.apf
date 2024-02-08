@@ -362,9 +362,9 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
         }
         case PKTDATACOPY_OPCODE: {
             if (reg_num == 0) {
-                print_opcode("pcopy");
+                print_opcode("pktcopy");
             } else {
-                print_opcode("dcopy");
+                print_opcode("datacopy");
             }
             uint32_t src_offs = imm;
             uint32_t copy_len = DECODE_IMM(1);
