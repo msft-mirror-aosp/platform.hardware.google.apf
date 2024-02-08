@@ -114,11 +114,11 @@
      454: ldw         r0, [90]
      456: jeq         r0, 0x0, 574
      459: jlt         r0, 0xb4, 480
-     462: jlt         r0, 0x2aaaaaab, 574
-     471: jgt         r0, 0x7fffffff, 574
+     462: jlt         r0, 0x55555555, 574
+     471: jgt         r0, 0xffffffff, 574
      480: ldw         r0, [94]
-     482: jlt         r0, 0x2aaaaaab, 574
-     491: jgt         r0, 0x7fffffff, 574
+     482: jlt         r0, 0x55555555, 574
+     491: jgt         r0, 0xffffffff, 574
      500: li          r0, 98
      502: jnebs       r0, 0x18, 574, 000000002401fa000480f000000000000000000019030000
      529: ldw         r0, [122]
