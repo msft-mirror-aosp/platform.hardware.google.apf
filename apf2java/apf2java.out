@@ -136,12 +136,12 @@
         gen.addJumpIfR0Equals(0x0, "LABEL_574");
         gen.addJumpIfR0LessThan(0xb4, "LABEL_480");
         gen.addJumpIfR0LessThan(0x55555555, "LABEL_574");
-        gen.addJumpIfR0GreaterThan(0xffffffff, "LABEL_574");
+        gen.addJumpIfR0GreaterThan(0xffffffffL, "LABEL_574");
 
         gen.defineLabel("LABEL_480");
         gen.addLoad32(R0, 94);
         gen.addJumpIfR0LessThan(0x55555555, "LABEL_574");
-        gen.addJumpIfR0GreaterThan(0xffffffff, "LABEL_574");
+        gen.addJumpIfR0GreaterThan(0xffffffffL, "LABEL_574");
         gen.addLoadImmediate(R0, 98);
         gen.addJumpIfBytesAtR0NotEqual(hexStringToByteArray("000000002401fa000480f000000000000000000019030000"), "LABEL_574");
         gen.addLoad32(R0, 122);
