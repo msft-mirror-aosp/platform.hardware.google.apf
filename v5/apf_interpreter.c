@@ -687,10 +687,11 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
 /* Accept packet if not write within allocated output buffer */
 #define ASSERT_IN_OUTPUT_BOUNDS(p, size) ASSERT_RETURN(IN_OUTPUT_BOUNDS(p, size))
 
-/* Decode the imm length. */
+/* Decode the imm length, does not do range checking. */
+/* But note that program is at least 16 bytes shorter than ram, so first few */
+/* immediates can always be safely decoded without exceeding ram buffer. */
 #define DECODE_IMM(value, length)                   \
     do {                                            \
-        ASSERT_FORWARD_IN_PROGRAM(pc + length - 1); \
         value = 0;                                  \
         u32 i;                                      \
         for (i = 0; i < (length); i++)              \
@@ -714,7 +715,7 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
       if (len_field != 0) {
           const u32 imm_len = 1 << (len_field - 1);
           ASSERT_FORWARD_IN_PROGRAM(pc + imm_len - 1);
-          DECODE_IMM(imm, imm_len);
+          DECODE_IMM(imm, imm_len); /* 1st immediate, at worst bytes 1-4 past opcode/program_len */
           /* Sign extend imm into signed_imm. */
           signed_imm = (s32) (imm << ((4 - imm_len) * 8));
           signed_imm >>= (4 - imm_len) * 8;
@@ -777,7 +778,7 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
               } else if (len_field != 0) {
                   u32 cmp_imm_len = 1 << (len_field - 1);
                   ASSERT_FORWARD_IN_PROGRAM(pc + cmp_imm_len - 1);
-                  DECODE_IMM(cmp_imm, cmp_imm_len);
+                  DECODE_IMM(cmp_imm, cmp_imm_len); /* 2nd imm, at worst 8 bytes past prog_len */
               }
               switch (opcode) {
                   case JEQ_OPCODE:  if (registers[0] == cmp_imm) pc += imm; break;
@@ -853,7 +854,7 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                     if (reg_num == 0) {
                         tx_buf_len = REG;
                     } else {
-                        DECODE_IMM(tx_buf_len, 2);
+                        DECODE_IMM(tx_buf_len, 2); /* 2nd imm, at worst 6 bytes past prog_len */
                     }
                     /* checksumming functions requires minimum 74 byte buffer for correctness */
                     if (tx_buf_len < 74) tx_buf_len = 74;
@@ -887,9 +888,9 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                   case JDNSQMATCH_EXT_OPCODE: {
                     const u32 imm_len = 1 << (len_field - 1);
                     u32 jump_offs;
-                    DECODE_IMM(jump_offs, imm_len);
+                    DECODE_IMM(jump_offs, imm_len); /* 2nd imm, at worst 8 bytes past prog_len */
                     int qtype;
-                    DECODE_IMM(qtype, 1);
+                    DECODE_IMM(qtype, 1); /* 3rd imm, at worst 9 bytes past prog_len */
                     u32 udp_payload_offset = registers[0];
                     int match_rst = match_names(program + pc,
                                                 program + program_len,
@@ -980,7 +981,7 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
               ASSERT_RETURN(tx_buf != NULL);
               u32 src_offs = imm;
               u32 copy_len;
-              DECODE_IMM(copy_len, 1);
+              DECODE_IMM(copy_len, 1); /* 2nd imm, at worst 5 bytes past prog_len */
               u32 dst_offs = mem.named.tx_buf_offset;
               ASSERT_IN_OUTPUT_BOUNDS(dst_offs, copy_len);
               /* reg_num == 0 copy from packet, reg_num == 1 copy from data. */
