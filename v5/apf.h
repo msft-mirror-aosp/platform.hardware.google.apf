@@ -253,6 +253,9 @@ typedef union {
 #define JDNSAMATCH_EXT_OPCODE 44
 #define JDNSAMATCHSAFE_EXT_OPCODE 46
 
+// This extended opcode is used to implement PKTDATACOPY_OPCODE
+#define PKTDATACOPYIMM_EXT_OPCODE 65536
+
 #define EXTRACT_OPCODE(i) (((i) >> 3) & 31)
 #define EXTRACT_REGISTER(i) ((i) & 1)
 #define EXTRACT_IMM_LENGTH(i) (((i) >> 1) & 3)
