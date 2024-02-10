@@ -74,6 +74,10 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
 // Accept packet if not within data bounds
 #define ASSERT_IN_DATA_BOUNDS(p, size) ASSERT_RETURN(IN_DATA_BOUNDS(p, size))
 
+  bool v6 = false;
+  // Counters start at end of RAM and count *backwards* so this array takes negative integers.
+  u32 *counter = (u32*)(program + ram_len);
+
   // Program counter.
   u32 pc = 0;
   // Memory slot values.
@@ -184,6 +188,12 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
               break;
           }
           case JMP_OPCODE:
+              if (reg_num && !v6) {
+                // First invocation of APFv6 jmpdata instruction
+                counter[-1] = 0x12345678; // endianness marker
+                counter[-2]++; // total packets ++
+                v6 = true;
+              }
               // This can jump backwards. Infinite looping prevented by instructions_remaining.
               pc += imm;
               break;
@@ -437,12 +447,14 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
   if (3 & (uintptr_t)program) return PASS_PACKET;
   if (3 & ram_len) return PASS_PACKET;
 
-  // APFv6 requires at least 4 u32 counters at the end of ram
-  if (program_len + 16 > ram_len) return PASS_PACKET;
-
   // We rely on ram_len + 65536 not overflowing, so require ram_len < 2GiB
   // Similarly LDDW/STDW have special meaning for negative ram offsets.
-  if (ram_len >> 31) return PASS_PACKET;
+  // We also don't want garbage like program_len == 0xFFFFFFFF
+  if ((program_len | ram_len) >> 31) return PASS_PACKET;
+
+  // APFv6 requires at least 4 u32 counters at the end of ram, this makes counter[-4]++ valid
+  // This cannot wrap due to previous check.
+  if (program_len + 16 > ram_len) return PASS_PACKET;
 
   return do_apf_run(ctx, (u8*)program, program_len, ram_len, packet, packet_len, filter_age_16384ths);
 }
