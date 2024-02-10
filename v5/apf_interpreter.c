@@ -703,12 +703,9 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
 
   do {
       APF_TRACE_HOOK(pc, registers, program, program_len, packet, packet_len, mem.slot, ram_len);
-      if (pc == program_len) {
-          return PASS_PACKET;
-      } else if (pc == (program_len + 1)) {
-          return DROP_PACKET;
-      }
-      ASSERT_IN_PROGRAM_BOUNDS(pc);
+      if (pc == program_len + 1) return DROP_PACKET;
+      if (pc >= program_len) return PASS_PACKET;
+
       const u8 bytecode = program[pc++];
       const u32 opcode = EXTRACT_OPCODE(bytecode);
       const u32 reg_num = EXTRACT_REGISTER(bytecode);
