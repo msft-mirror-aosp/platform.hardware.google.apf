@@ -205,11 +205,15 @@ typedef union {
  */
 #define ALLOCATE_EXT_OPCODE 36
 /* Transmit and deallocate the buffer (transmission can be delayed until the program
- * terminates). R=0 means discard the buffer, R=1 means transmit the buffer.
- * "e.g. trans"
- * "e.g. discard"
+ * terminates).  Length of buffer is the output buffer pointer (0 means discard).
+ * R=1 iff udp style L4 checksum
+ * u8 imm2 - ip header offset from start of buffer (255 for non-ip packets)
+ * u8 imm3 - offset from start of buffer to store L4 checksum (255 for no L4 checksum)
+ * u8 imm4 - offset from start of buffer to begin L4 checksum calculation (present iff imm3 != 255)
+ * u16 imm5 - partial checksum value to include in L4 checksum (present iff imm3 != 255)
+ * "e.g. transmit"
  */
-#define TRANSMITDISCARD_EXT_OPCODE 37
+#define TRANSMIT_EXT_OPCODE 37
 /* Write 1, 2 or 4 byte value from register to the output buffer and auto-increment the
  * output buffer pointer.
  * e.g. "ewrite1 r0"

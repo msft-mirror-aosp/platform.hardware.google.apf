@@ -308,14 +308,14 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                     } else {
                         DECODE_IMM(tx_buf_len, 2); // 2nd imm, at worst 6 bytes past prog_len
                     }
-                    // checksumming functions requires minimum 74 byte buffer for correctness
-                    if (tx_buf_len < 74) tx_buf_len = 74;
+                    // checksumming functions requires minimum 266 byte buffer for correctness
+                    if (tx_buf_len < 266) tx_buf_len = 266;
                     tx_buf = apf_allocate_buffer(ctx, tx_buf_len);
                     if (!tx_buf) { counter[-3]++; return PASS_PACKET; } // allocate failure
                     memset(tx_buf, 0, tx_buf_len);
                     mem.named.tx_buf_offset = 0;
                     break;
-                  case TRANSMITDISCARD_EXT_OPCODE:
+                  case TRANSMIT_EXT_OPCODE:
                     ASSERT_RETURN(tx_buf != NULL);
                     u32 pkt_len = mem.named.tx_buf_offset;
                     // If pkt_len > allocate_buffer_len, it means sth. wrong
@@ -329,7 +329,18 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                     // tx_buf_len cannot be large because we'd run out of RAM,
                     // so the above unsigned comparison effectively guarantees casting pkt_len
                     // to a signed value does not result in it going negative.
-                    int dscp = calculate_checksum_and_return_dscp(tx_buf, (s32)pkt_len);
+                    u8 ip_ofs, csum_ofs;
+                    u8 csum_start = 0;
+                    u16 partial_csum = 0;
+                    DECODE_IMM(ip_ofs, 1);            // 2nd imm, at worst 5 bytes past prog_len
+                    DECODE_IMM(csum_ofs, 1);          // 3rd imm, at worst 6 bytes past prog_len
+                    if (csum_ofs < 255) {
+                        DECODE_IMM(csum_start, 1);    // 4th imm, at worst 7 bytes past prog_len
+                        DECODE_IMM(partial_csum, 2);  // 5th imm, at worst 9 bytes past prog_len
+                    }
+                    int dscp = csum_and_return_dscp(tx_buf, (s32)pkt_len, ip_ofs,
+                                                    partial_csum, csum_start, csum_ofs,
+                                                    (bool)reg_num);
                     int ret = apf_transmit_buffer(ctx, tx_buf, pkt_len, dscp);
                     tx_buf = NULL;
                     tx_buf_len = 0;
