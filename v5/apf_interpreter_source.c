@@ -439,5 +439,8 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
   if (3 & (uintptr_t)program) return PASS_PACKET;
   if (3 & ram_len) return PASS_PACKET;
 
+  // APFv6 requires at least 4 u32 counters at the end of ram
+  if (program_len + 16 > ram_len) return PASS_PACKET;
+
   return do_apf_run(ctx, (u8*)program, program_len, ram_len, packet, packet_len, filter_age_16384ths);
 }
