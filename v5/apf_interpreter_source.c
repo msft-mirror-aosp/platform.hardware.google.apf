@@ -77,8 +77,6 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
 
   // Program counter.
   u32 pc = 0;
-// Accept packet if not within program or not ahead of program counter
-#define ASSERT_FORWARD_IN_PROGRAM(p) ASSERT_RETURN(IN_RAM_BOUNDS(p) && (p) >= pc)
   // Memory slot values.
   memory_type mem = {};
   // Fill in pre-filled memory slot values.
@@ -215,7 +213,9 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                       // pc is offset of program bytes to compare.
                       // imm is jump target offset.
                       // REG is offset of packet bytes to compare.
-                      ASSERT_FORWARD_IN_PROGRAM(pc + cmp_imm - 1);
+                      if (len_field > 2) return PASS_PACKET; // guarantees cmp_imm <= 0xFFFF
+                      // pc < program_len < ram_len < 2GiB, thus pc + cmp_imm cannot wrap
+                      if (!IN_RAM_BOUNDS(pc + cmp_imm - 1)) return PASS_PACKET;
                       ASSERT_IN_PACKET_BOUNDS(REG);
                       const u32 last_packet_offs = REG + cmp_imm - 1;
                       ASSERT_RETURN(last_packet_offs >= REG);
@@ -440,6 +440,10 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
 
   // APFv6 requires at least 4 u32 counters at the end of ram
   if (program_len + 16 > ram_len) return PASS_PACKET;
+
+  // We rely on ram_len + 65536 not overflowing, so require ram_len < 2GiB
+  // Similarly LDDW/STDW have special meaning for negative ram offsets.
+  if (ram_len >> 31) return PASS_PACKET;
 
   return do_apf_run(ctx, (u8*)program, program_len, ram_len, packet, packet_len, filter_age_16384ths);
 }
