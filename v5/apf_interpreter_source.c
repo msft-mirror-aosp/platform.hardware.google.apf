@@ -140,7 +140,6 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
       s32 signed_imm = 0;
       if (len_field != 0) {
           const u32 imm_len = 1 << (len_field - 1);
-          ASSERT_FORWARD_IN_PROGRAM(pc + imm_len - 1);
           DECODE_IMM(imm, imm_len); // 1st immediate, at worst bytes 1-4 past opcode/program_len
           // Sign extend imm into signed_imm.
           signed_imm = (s32) (imm << ((4 - imm_len) * 8));
@@ -203,7 +202,6 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                   cmp_imm = registers[1];
               } else if (len_field != 0) {
                   u32 cmp_imm_len = 1 << (len_field - 1);
-                  ASSERT_FORWARD_IN_PROGRAM(pc + cmp_imm_len - 1);
                   DECODE_IMM(cmp_imm, cmp_imm_len); // 2nd imm, at worst 8 bytes past prog_len
               }
               switch (opcode) {
