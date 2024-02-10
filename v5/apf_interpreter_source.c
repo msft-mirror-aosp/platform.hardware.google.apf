@@ -202,7 +202,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
           case JGT_OPCODE:
           case JLT_OPCODE:
           case JSET_OPCODE:
-          case JNEBS_OPCODE: {
+          case JBSMATCH_OPCODE: {
               // Load second immediate field.
               u32 cmp_imm = 0;
               if (reg_num == 1) {
@@ -218,7 +218,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                   case JGT_OPCODE:  if (registers[0] >  cmp_imm) pc += imm; break;
                   case JLT_OPCODE:  if (registers[0] <  cmp_imm) pc += imm; break;
                   case JSET_OPCODE: if (registers[0] &  cmp_imm) pc += imm; break;
-                  case JNEBS_OPCODE: {
+                  case JBSMATCH_OPCODE: {
                       // cmp_imm is size in bytes of data to compare.
                       // pc is offset of program bytes to compare.
                       // imm is jump target offset.
@@ -339,6 +339,21 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     } else if (reg_num == 1 && match_rst == 1) {
                         pc += jump_offs;
                     }
+                    break;
+                  }
+                  case EWRITE1_EXT_OPCODE:
+                  case EWRITE2_EXT_OPCODE:
+                  case EWRITE4_EXT_OPCODE: {
+                    ASSERT_RETURN(tx_buf != NULL);
+                    u32 offs = mem.named.tx_buf_offset;
+                    const u32 write_len = 1 << (imm - EWRITE1_EXT_OPCODE);
+                    ASSERT_IN_OUTPUT_BOUNDS(offs, write_len);
+                    u32 i;
+                    for (i = 0; i < write_len; ++i) {
+                        *(tx_buf + offs) = (u8) ((REG >> (write_len - 1 - i) * 8) & 0xff);
+                        offs++;
+                    }
+                    mem.named.tx_buf_offset = offs;
                     break;
                   }
                   default:  // Unknown extended opcode
