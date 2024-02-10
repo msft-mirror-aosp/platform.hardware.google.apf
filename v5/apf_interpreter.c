@@ -632,8 +632,6 @@ u32 apf_version(void) {
 static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                       const u32 ram_len, const u8* const packet,
                       const u32 packet_len, const u32 filter_age_16384ths) {
-/* Is offset within program bounds? */
-#define IN_PROGRAM_BOUNDS(p) (ENFORCE_UNSIGNED(p) && (p) < program_len)
 /* Is offset within ram bounds? */
 #define IN_RAM_BOUNDS(p) (ENFORCE_UNSIGNED(p) && (p) < ram_len)
 /* Is offset within packet bounds? */
@@ -644,8 +642,6 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                                  (p) + (size) <= ram_len && \
                                  (p) >= program_len && \
                                  (p) + (size) >= (p))  /* catch wraparounds */
-/* Accept packet if not within program bounds */
-#define ASSERT_IN_PROGRAM_BOUNDS(p) ASSERT_RETURN(IN_PROGRAM_BOUNDS(p))
 /* Accept packet if not within ram bounds */
 #define ASSERT_IN_RAM_BOUNDS(p) ASSERT_RETURN(IN_RAM_BOUNDS(p))
 /* Accept packet if not within packet bounds */
@@ -656,7 +652,7 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
   /* Program counter. */
   u32 pc = 0;
 /* Accept packet if not within program or not ahead of program counter */
-#define ASSERT_FORWARD_IN_PROGRAM(p) ASSERT_RETURN(IN_PROGRAM_BOUNDS(p) && (p) >= pc)
+#define ASSERT_FORWARD_IN_PROGRAM(p) ASSERT_RETURN(IN_RAM_BOUNDS(p) && (p) >= pc)
   /* Memory slot values. */
   memory_type mem = {};
   /* Fill in pre-filled memory slot values. */
