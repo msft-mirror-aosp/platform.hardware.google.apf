@@ -692,13 +692,13 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
 #define ASSERT_IN_OUTPUT_BOUNDS(p, size) ASSERT_RETURN(IN_OUTPUT_BOUNDS(p, size))
 
 /* Decode the imm length. */
-#define DECODE_IMM(value, length)                                              \
-    do {                                                                       \
-        ASSERT_FORWARD_IN_PROGRAM(pc + length - 1);                            \
-        value = 0;                                                             \
-        u32 i;                                                            \
-        for (i = 0; i < (length) && pc < program_len; i++)                     \
-            value = (value << 8) | program[pc++];                              \
+#define DECODE_IMM(value, length)                          \
+    do {                                                   \
+        ASSERT_FORWARD_IN_PROGRAM(pc + length - 1);        \
+        value = 0;                                         \
+        u32 i;                                             \
+        for (i = 0; i < (length) && pc < program_len; i++) \
+            value = (value << 8) | program[pc++];          \
     } while (0)
 
   do {
