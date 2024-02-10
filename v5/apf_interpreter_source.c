@@ -267,6 +267,28 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
           case LI_OPCODE:
               REG = (u32) signed_imm;
               break;
+          case PKTDATACOPY_OPCODE: {
+              ASSERT_RETURN(tx_buf != NULL);
+              u32 src_offs = imm;
+              u32 copy_len;
+              DECODE_IMM(copy_len, 1); // 2nd imm, at worst 5 bytes past prog_len
+              u32 dst_offs = mem.named.tx_buf_offset;
+              ASSERT_IN_OUTPUT_BOUNDS(dst_offs, copy_len);
+              // reg_num == 0 copy from packet, reg_num == 1 copy from data.
+              if (reg_num == 0) {
+                  ASSERT_IN_PACKET_BOUNDS(src_offs);
+                  const u32 last_packet_offs = src_offs + copy_len - 1;
+                  ASSERT_RETURN(last_packet_offs >= src_offs);
+                  ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
+                  memmove(tx_buf + dst_offs, packet + src_offs, copy_len);
+              } else {
+                  ASSERT_IN_RAM_BOUNDS(src_offs + copy_len - 1);
+                  memmove(tx_buf + dst_offs, program + src_offs, copy_len);
+              }
+              dst_offs += copy_len;
+              mem.named.tx_buf_offset = dst_offs;
+              break;
+          }
           case EXT_OPCODE:
               if (
 // If LDM_EXT_OPCODE is 0 and imm is compared with it, a compiler error will result,
@@ -420,28 +442,6 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                   offs++;
               }
               mem.named.tx_buf_offset = offs;
-              break;
-          }
-          case PKTDATACOPY_OPCODE: {
-              ASSERT_RETURN(tx_buf != NULL);
-              u32 src_offs = imm;
-              u32 copy_len;
-              DECODE_IMM(copy_len, 1); // 2nd imm, at worst 5 bytes past prog_len
-              u32 dst_offs = mem.named.tx_buf_offset;
-              ASSERT_IN_OUTPUT_BOUNDS(dst_offs, copy_len);
-              // reg_num == 0 copy from packet, reg_num == 1 copy from data.
-              if (reg_num == 0) {
-                  ASSERT_IN_PACKET_BOUNDS(src_offs);
-                  const u32 last_packet_offs = src_offs + copy_len - 1;
-                  ASSERT_RETURN(last_packet_offs >= src_offs);
-                  ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
-                  memmove(tx_buf + dst_offs, packet + src_offs, copy_len);
-              } else {
-                  ASSERT_IN_RAM_BOUNDS(src_offs + copy_len - 1);
-                  memmove(tx_buf + dst_offs, program + src_offs, copy_len);
-              }
-              dst_offs += copy_len;
-              mem.named.tx_buf_offset = dst_offs;
               break;
           }
           default:  // Unknown opcode
