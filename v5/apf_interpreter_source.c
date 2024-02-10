@@ -52,12 +52,12 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
 u32 apf_version(void) {
-    return 20240124;
+    return 20240125;
 }
 
-int apf_run(void* ctx, u8* const program, const u32 program_len,
-            const u32 ram_len, const u8* const packet,
-            const u32 packet_len, const u32 filter_age_16384ths) {
+static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
+                      const u32 ram_len, const u8* const packet,
+                      const u32 packet_len, const u32 filter_age_16384ths) {
 // Is offset within program bounds?
 #define IN_PROGRAM_BOUNDS(p) (ENFORCE_UNSIGNED(p) && (p) < program_len)
 // Is offset within ram bounds?
@@ -436,4 +436,15 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
       }
   } while (instructions_remaining--);
   return PASS_PACKET;
+}
+
+int apf_run(void* ctx, u32* const program, const u32 program_len,
+            const u32 ram_len, const u8* const packet,
+            const u32 packet_len, const u32 filter_age_16384ths) {
+  // Due to direct 32-bit read/write access to counters at end of ram
+  // APFv6 interpreter requires program & ram_len to be 4 byte aligned.
+  if (3 & (uintptr_t)program) return PASS_PACKET;
+  if (3 & ram_len) return PASS_PACKET;
+
+  return do_apf_run(ctx, (u8*)program, program_len, ram_len, packet, packet_len, filter_age_16384ths);
 }
