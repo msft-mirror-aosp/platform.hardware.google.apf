@@ -17,7 +17,13 @@
 #include "apf_interpreter.h"
 
 // TODO: Remove the dependency of the standard library and make the interpreter self-contained.
-#include <string.h>// For memcmp
+#include <string.h>  // For memcmp
+
+#if __GNUC__ >= 7 || __clang__
+#define FALLTHROUGH __attribute__((fallthrough))
+#else
+#define FALLTHROUGH
+#endif
 
 typedef enum { false, true } bool;
 
@@ -52,7 +58,7 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
 u32 apf_version(void) {
-    return 20240125;
+    return 20240126;
 }
 
 static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
@@ -147,6 +153,7 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
           signed_imm >>= (4 - imm_len) * 8;
       }
 
+      u32 pktcopy_src_offset = 0;  // used for various pktdatacopy opcodes
       switch (opcode) {
           case PASSDROP_OPCODE: {
               if (len_field > 2) return PASS_PACKET;  // max 64K counters (ie. imm < 64K)
@@ -267,28 +274,10 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
           case LI_OPCODE:
               REG = (u32) signed_imm;
               break;
-          case PKTDATACOPY_OPCODE: {
-              ASSERT_RETURN(tx_buf != NULL);
-              u32 src_offs = imm;
-              u32 copy_len;
-              DECODE_IMM(copy_len, 1); // 2nd imm, at worst 5 bytes past prog_len
-              u32 dst_offs = mem.named.tx_buf_offset;
-              ASSERT_IN_OUTPUT_BOUNDS(dst_offs, copy_len);
-              // reg_num == 0 copy from packet, reg_num == 1 copy from data.
-              if (reg_num == 0) {
-                  ASSERT_IN_PACKET_BOUNDS(src_offs);
-                  const u32 last_packet_offs = src_offs + copy_len - 1;
-                  ASSERT_RETURN(last_packet_offs >= src_offs);
-                  ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
-                  memmove(tx_buf + dst_offs, packet + src_offs, copy_len);
-              } else {
-                  ASSERT_IN_RAM_BOUNDS(src_offs + copy_len - 1);
-                  memmove(tx_buf + dst_offs, program + src_offs, copy_len);
-              }
-              dst_offs += copy_len;
-              mem.named.tx_buf_offset = dst_offs;
-              break;
-          }
+          case PKTDATACOPY_OPCODE:
+              pktcopy_src_offset = imm;
+              imm = PKTDATACOPYIMM_EXT_OPCODE;
+              FALLTHROUGH;
           case EXT_OPCODE:
               if (
 // If LDM_EXT_OPCODE is 0 and imm is compared with it, a compiler error will result,
@@ -346,6 +335,33 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                     tx_buf_len = 0;
                     if (ret) { counter[-4]++; return PASS_PACKET; } // transmit failure
                     break;
+                  case EPKTDATACOPYIMM_EXT_OPCODE:  // 41
+                  case EPKTDATACOPYR1_EXT_OPCODE:   // 42
+                    pktcopy_src_offset = registers[0];
+                    FALLTHROUGH;
+                  case PKTDATACOPYIMM_EXT_OPCODE: { // 65536
+                    u32 copy_len = registers[1];
+                    if (imm != EPKTDATACOPYR1_EXT_OPCODE) {
+                        DECODE_IMM(copy_len, 1); // 2nd imm, at worst 8 bytes past prog_len
+                    }
+                    ASSERT_RETURN(tx_buf != NULL);
+                    u32 dst_offs = mem.named.tx_buf_offset;
+                    ASSERT_IN_OUTPUT_BOUNDS(dst_offs, copy_len);
+                    // reg_num == 0 copy from packet, reg_num == 1 copy from data.
+                    if (reg_num == 0) {
+                        ASSERT_IN_PACKET_BOUNDS(pktcopy_src_offset);
+                        const u32 last_packet_offs = pktcopy_src_offset + copy_len - 1;
+                        ASSERT_RETURN(last_packet_offs >= pktcopy_src_offset);
+                        ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
+                        memmove(tx_buf + dst_offs, packet + pktcopy_src_offset, copy_len);
+                    } else {
+                        ASSERT_IN_RAM_BOUNDS(pktcopy_src_offset + copy_len - 1);
+                        memmove(tx_buf + dst_offs, program + pktcopy_src_offset, copy_len);
+                    }
+                    dst_offs += copy_len;
+                    mem.named.tx_buf_offset = dst_offs;
+                    break;
+                  }
                   case JDNSQMATCH_EXT_OPCODE:       // 43
                   case JDNSAMATCH_EXT_OPCODE:       // 44
                   case JDNSQMATCHSAFE_EXT_OPCODE:   // 45
