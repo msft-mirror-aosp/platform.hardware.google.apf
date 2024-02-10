@@ -294,6 +294,7 @@ typedef union {
 #define EPKTDATACOPYR1_EXT_OPCODE 42
 /* Jumps if the UDP payload content (starting at R0) does not contain the specified QNAME,
  * applying MDNS case insensitivity.
+ * SAFE version PASSES corrupt packets, while the other one DROPS.
  * R0: Offset to UDP payload content
  * imm1: Opcode
  * imm2: Label offset
@@ -302,9 +303,11 @@ typedef union {
  * e.g.: "jdnsqmatch R0,label,0x0c,\002aa\005local\0\0"
  */
 #define JDNSQMATCH_EXT_OPCODE 43
+#define JDNSQMATCHSAFE_EXT_OPCODE 45
 /* Jumps if the UDP payload content (starting at R0) does not contain one
  * of the specified NAMEs in answers/authority/additional records, applying
  * case insensitivity.
+ * SAFE version PASSES corrupt packets, while the other one DROPS.
  * R=0/1 meaning 'does not match'/'matches'
  * R0: Offset to UDP payload content
  * imm1: Opcode
@@ -313,6 +316,7 @@ typedef union {
  * e.g.: "jdnsamatch R0,label,0x0c,\002aa\005local\0\0"
  */
 #define JDNSAMATCH_EXT_OPCODE 44
+#define JDNSAMATCHSAFE_EXT_OPCODE 46
 
 #define EXTRACT_OPCODE(i) (((i) >> 3) & 31)
 #define EXTRACT_REGISTER(i) ((i) & 1)
@@ -689,7 +693,7 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
 #define ASSERT_IN_OUTPUT_BOUNDS(p, size) ASSERT_RETURN(IN_OUTPUT_BOUNDS(p, size))
 
 /* Decode the imm length, does not do range checking. */
-/* But note that program is at least 16 bytes shorter than ram, so first few */
+/* But note that program is at least 20 bytes shorter than ram, so first few */
 /* immediates can always be safely decoded without exceeding ram buffer. */
 #define DECODE_IMM(value, length)                   \
     do {                                            \
@@ -890,31 +894,34 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                     tx_buf_len = 0;
                     if (ret) { counter[-4]++; return PASS_PACKET; } /* transmit failure */
                     break;
-                  case JDNSQMATCH_EXT_OPCODE:
-                  case JDNSAMATCH_EXT_OPCODE: {
+                  case JDNSQMATCH_EXT_OPCODE:       /* 43 */
+                  case JDNSAMATCH_EXT_OPCODE:       /* 44 */
+                  case JDNSQMATCHSAFE_EXT_OPCODE:   /* 45 */
+                  case JDNSAMATCHSAFE_EXT_OPCODE: { /* 46 */
                     const u32 imm_len = 1 << (len_field - 1);
                     u32 jump_offs;
                     DECODE_IMM(jump_offs, imm_len); /* 2nd imm, at worst 8 bytes past prog_len */
                     int qtype = -1;
-                    if (imm == JDNSQMATCH_EXT_OPCODE) {
+                    if (imm & 1) { /* JDNSQMATCH & JDNSQMATCHSAFE are *odd* extended opcodes */
                         DECODE_IMM(qtype, 1); /* 3rd imm, at worst 9 bytes past prog_len */
                     }
                     u32 udp_payload_offset = registers[0];
-                    int match_rst = match_names(program + pc,
-                                                program + program_len,
-                                                packet + udp_payload_offset,
-                                                packet_len - udp_payload_offset,
-                                                qtype);
-                    if (match_rst == -1) return PASS_PACKET;
+                    match_result_type match_rst = match_names(program + pc,
+                                                              program + program_len,
+                                                              packet + udp_payload_offset,
+                                                              packet_len - udp_payload_offset,
+                                                              qtype);
+                    if (match_rst == error_program) return PASS_PACKET;
+                    if (match_rst == error_packet) {
+                        counter[-5]++; /* increment error dns packet counter */
+                        return (imm >= JDNSQMATCHSAFE_EXT_OPCODE) ? PASS_PACKET : DROP_PACKET;
+                    }
                     while (pc + 1 < program_len && !(program[pc] == 0 && program[pc + 1] == 0)) {
                         pc++;
                     }
                     pc += 2;
-                    if (reg_num == 0 && match_rst == 0) {
-                        pc += jump_offs;
-                    } else if (reg_num == 1 && match_rst == 1) {
-                        pc += jump_offs;
-                    }
+                    /* relies on reg_num in {0,1} and match_rst being {false=0, true=1} */
+                    if (!(reg_num ^ (u32)match_rst)) pc += jump_offs;
                     break;
                   }
                   case EWRITE1_EXT_OPCODE:
@@ -1027,9 +1034,9 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
   /* We also don't want garbage like program_len == 0xFFFFFFFF */
   if ((program_len | ram_len) >> 31) return PASS_PACKET;
 
-  /* APFv6 requires at least 4 u32 counters at the end of ram, this makes counter[-4]++ valid */
+  /* APFv6 requires at least 5 u32 counters at the end of ram, this makes counter[-5]++ valid */
   /* This cannot wrap due to previous check. */
-  if (program_len + 16 > ram_len) return PASS_PACKET;
+  if (program_len + 20 > ram_len) return PASS_PACKET;
 
   return do_apf_run(ctx, (u8*)program, program_len, ram_len, packet, packet_len, filter_age_16384ths);
 }
