@@ -726,6 +726,14 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
       }
 
       switch (opcode) {
+          case PASSDROP_OPCODE: {
+              if (len_field > 2) return PASS_PACKET;  /* max 64K counters (ie. imm < 64K) */
+              if (imm) {
+                  if (4 * imm > ram_len) return PASS_PACKET;
+                  counter[-imm]++;
+              }
+              return reg_num ? DROP_PACKET : PASS_PACKET;
+          }
           case LDB_OPCODE:
           case LDH_OPCODE:
           case LDW_OPCODE:
