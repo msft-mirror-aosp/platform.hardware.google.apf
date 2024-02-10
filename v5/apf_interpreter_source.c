@@ -316,12 +316,15 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                     tx_buf_len = 0;
                     if (ret) { counter[-4]++; return PASS_PACKET; } // transmit failure
                     break;
-                  case JDNSQMATCH_EXT_OPCODE: {
+                  case JDNSQMATCH_EXT_OPCODE:
+                  case JDNSAMATCH_EXT_OPCODE: {
                     const u32 imm_len = 1 << (len_field - 1);
                     u32 jump_offs;
                     DECODE_IMM(jump_offs, imm_len); // 2nd imm, at worst 8 bytes past prog_len
-                    int qtype;
-                    DECODE_IMM(qtype, 1); // 3rd imm, at worst 9 bytes past prog_len
+                    int qtype = -1;
+                    if (imm == JDNSQMATCH_EXT_OPCODE) {
+                        DECODE_IMM(qtype, 1); // 3rd imm, at worst 9 bytes past prog_len
+                    }
                     u32 udp_payload_offset = registers[0];
                     int match_rst = match_names(program + pc,
                                                 program + program_len,
