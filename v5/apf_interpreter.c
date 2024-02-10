@@ -866,7 +866,7 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                     /* checksumming functions requires minimum 74 byte buffer for correctness */
                     if (tx_buf_len < 74) tx_buf_len = 74;
                     tx_buf = apf_allocate_buffer(ctx, tx_buf_len);
-                    ASSERT_RETURN(tx_buf != NULL);
+                    if (!tx_buf) { counter[-3]++; return PASS_PACKET; } /* allocate failure */
                     memset(tx_buf, 0, tx_buf_len);
                     mem.named.tx_buf_offset = 0;
                     break;
@@ -888,9 +888,7 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
                     int ret = apf_transmit_buffer(ctx, tx_buf, pkt_len, dscp);
                     tx_buf = NULL;
                     tx_buf_len = 0;
-                    if (ret) {
-                      return PASS_PACKET;
-                    }
+                    if (ret) { counter[-4]++; return PASS_PACKET; } /* transmit failure */
                     break;
                   case JDNSQMATCH_EXT_OPCODE: {
                     const u32 imm_len = 1 << (len_field - 1);
