@@ -66,7 +66,6 @@ static int do_apf_run(void* ctx, u8* const program, const u32 program_len,
 #define IN_DATA_BOUNDS(p, size) (ENFORCE_UNSIGNED(p) && \
                                  ENFORCE_UNSIGNED(size) && \
                                  (p) + (size) <= ram_len && \
-                                 (p) >= program_len && \
                                  (p) + (size) >= (p))  // catch wraparounds
 // Accept packet if not within ram bounds
 #define ASSERT_IN_RAM_BOUNDS(p) ASSERT_RETURN(IN_RAM_BOUNDS(p))
