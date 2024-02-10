@@ -233,7 +233,7 @@ typedef union {
 #define JGT_OPCODE 17   /* Compare greater than and branch, e.g. "jgt R0,5,label" */
 #define JLT_OPCODE 18   /* Compare less than and branch, e.g. "jlt R0,5,label" */
 #define JSET_OPCODE 19  /* Compare any bits set and branch, e.g. "jset R0,5,label" */
-#define JNEBS_OPCODE 20 /* Compare not equal byte sequence, e.g. "jnebs R0,5,label,0x1122334455" */
+#define JBSMATCH_OPCODE 20 /* Compare byte sequence [R=0 not] equal, e.g. "jbsne R0,2,label,0x1122" */
 #define EXT_OPCODE 21   /* Immediate value is one of *_EXT_OPCODE */
 #define LDDW_OPCODE 22  /* Load 4 bytes from data address (register + simm): "lddw R0, [5+R1]" */
 #define STDW_OPCODE 23  /* Store 4 bytes to data address (register + simm): "stdw R0, [5+R1]" */
@@ -284,13 +284,14 @@ typedef union {
 #define EWRITE4_EXT_OPCODE 40
 /* Copy bytes from input packet/APF program/data region to output buffer and
  * auto-increment the output buffer pointer.
- * The copy src offset is stored in R0.
- * when R=0, the copy length is stored in (u8)imm2.
- * when R=1, the copy length is stored in R1.
- * e.g. "pktcopy r0, 5", "pktcopy r0, r1", "datacopy r0, 5", "datacopy r0, r1"
+ * Register bit is used to specify the source of data copy.
+ * R=0 means copy from packet.
+ * R=1 means copy from APF program/data region.
+ * The source offset is stored in R0, copy length is stored in u8 imm2 or R1.
+ * e.g. "epktcopy r0, 16", "edatacopy r0, 16", "epktcopy r0, r1", "edatacopy r0, r1"
  */
-#define EPKTCOPY_EXT_OPCODE 41
-#define EDATACOPY_EXT_OPCODE 42
+#define EPKTDATACOPYIMM_EXT_OPCODE 41
+#define EPKTDATACOPYR1_EXT_OPCODE 42
 /* Jumps if the UDP payload content (starting at R0) does not contain the specified QNAME,
  * applying MDNS case insensitivity.
  * R0: Offset to UDP payload content
@@ -374,15 +375,21 @@ match_result_type match_single_name(const u8* needle,
             u8 label_size = v;
             if (*ofs + label_size > udp_len) return error_packet;
             if (needle >= needle_bound) return error_program;
-            if (is_qname_match && label_size == *needle++) {
-                if (needle + label_size > needle_bound) return error_program;
-                while (label_size--) {
-                    u8 w = udp[(*ofs)++];
-                    is_qname_match &= (uppercase(w) == *needle++);
+            if (is_qname_match) {
+                u8 len = *needle++;
+                if (len == label_size) {
+                    if (needle + label_size > needle_bound) return error_program;
+                    while (label_size--) {
+                        u8 w = udp[(*ofs)++];
+                        is_qname_match &= (uppercase(w) == *needle++);
+                    }
+                } else {
+                    if (len != 0xFF) is_qname_match = false;
+                    *ofs += label_size;
                 }
             } else {
-                *ofs += label_size;
                 is_qname_match = false;
+                *ofs += label_size;
             }
         } else { /* reached the end of the name */
             if (first_unread_offset > *ofs) *ofs = first_unread_offset;
@@ -445,6 +452,7 @@ match_result_type match_names(const u8* needles,
         /* move needles pointer to the next needle. */
         do {
             u8 len = *needles++;
+            if (len == 0xFF) continue;
             if (len > 63) return error_program;
             needles += len;
             if (needles >= needle_bound) return error_program;
@@ -541,6 +549,55 @@ int calculate_checksum_and_return_dscp(u8* const pkt, const s32 len) {
       case ETH_P_IPV6: return calc_ipv6_csum(pkt + ETH_HLEN, len - ETH_HLEN);
       default: return 0;
     }
+}
+
+/**
+ * Calculate and store packet checksums and return dscp.
+ *
+ * @param pkt - pointer to the very start of the to-be-transmitted packet,
+ *              ie. the start of the ethernet header (if one is present)
+ *     WARNING: at minimum 266 bytes of buffer pointed to by 'pkt' pointer
+ *              *MUST* be writable.
+ * (IPv4 header checksum is a 2 byte value, 10 bytes after ip_ofs,
+ * which has a maximum value of 254.  Thus 254[ip_ofs] + 10 + 2[u16] = 266)
+ *
+ * @param len - length of the packet (this may be < 266).
+ * @param ip_ofs - offset from beginning of pkt to IPv4 or IPv6 header:
+ *                 IP version detected based on top nibble of this byte,
+ *                 for IPv4 we will calculate and store IP header checksum,
+ *                 but only for the first 20 bytes of the header,
+ *                 prior to calling this the IPv4 header checksum field
+ *                 must be initialized to the partial checksum of the IPv4
+ *                 options (0 if none)
+ *                 255 means there is no IP header (for example ARP)
+ *                 DSCP will be retrieved from this IP header (0 if none).
+ * @param partial_csum - additional value to include in L4 checksum
+ * @param csum_start - offset from beginning of pkt to begin L4 checksum
+ *                     calculation (until end of pkt specified by len)
+ * @param csum_ofs - offset from beginning of pkt to store L4 checksum
+ *                   255 means do not calculate/store L4 checksum
+ * @param udp - true iff we should generate a UDP style L4 checksum (0 -> 0xFFFF)
+ *
+ * @return 6-bit DSCP value [0..63], garbage on parse error.
+ */
+int csum_and_return_dscp(u8* const pkt, const s32 len, const u8 ip_ofs,
+  const u16 partial_csum, const u8 csum_start, const u8 csum_ofs, const bool udp) {
+    if (csum_ofs < 255) {
+        /* note that calc_csum() treats negative lengths as zero */
+        u32 csum = calc_csum(partial_csum, pkt + csum_start, len - csum_start);
+        if (udp) csum = fix_udp_csum(csum);
+        store_be16(pkt + csum_ofs, csum);
+    }
+    if (ip_ofs < 255) {
+        u8 ip = pkt[ip_ofs] >> 4;
+        if (ip == 4) {
+            store_be16(pkt + ip_ofs + 10, calc_csum(0, pkt + ip_ofs, IPV4_HLEN));
+            return pkt[ip_ofs + 1] >> 2;  /* DSCP */
+        } else if (ip == 6) {
+            return (read_be16(pkt + ip_ofs) >> 6) & 0x3F;  /* DSCP */
+        }
+    }
+    return 0;
 }
 /* End include of apf_checksum.h */
 
@@ -719,7 +776,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
           case JGT_OPCODE:
           case JLT_OPCODE:
           case JSET_OPCODE:
-          case JNEBS_OPCODE: {
+          case JBSMATCH_OPCODE: {
               /* Load second immediate field. */
               u32 cmp_imm = 0;
               if (reg_num == 1) {
@@ -735,7 +792,7 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                   case JGT_OPCODE:  if (registers[0] >  cmp_imm) pc += imm; break;
                   case JLT_OPCODE:  if (registers[0] <  cmp_imm) pc += imm; break;
                   case JSET_OPCODE: if (registers[0] &  cmp_imm) pc += imm; break;
-                  case JNEBS_OPCODE: {
+                  case JBSMATCH_OPCODE: {
                       /* cmp_imm is size in bytes of data to compare. */
                       /* pc is offset of program bytes to compare. */
                       /* imm is jump target offset. */
@@ -856,6 +913,21 @@ int apf_run(void* ctx, u8* const program, const u32 program_len,
                     } else if (reg_num == 1 && match_rst == 1) {
                         pc += jump_offs;
                     }
+                    break;
+                  }
+                  case EWRITE1_EXT_OPCODE:
+                  case EWRITE2_EXT_OPCODE:
+                  case EWRITE4_EXT_OPCODE: {
+                    ASSERT_RETURN(tx_buf != NULL);
+                    u32 offs = mem.named.tx_buf_offset;
+                    const u32 write_len = 1 << (imm - EWRITE1_EXT_OPCODE);
+                    ASSERT_IN_OUTPUT_BOUNDS(offs, write_len);
+                    u32 i;
+                    for (i = 0; i < write_len; ++i) {
+                        *(tx_buf + offs) = (u8) ((REG >> (write_len - 1 - i) * 8) & 0xff);
+                        offs++;
+                    }
+                    mem.named.tx_buf_offset = offs;
                     break;
                   }
                   default:  /* Unknown extended opcode */
