@@ -229,6 +229,7 @@ typedef union {
 #define EPKTDATACOPYR1_EXT_OPCODE 42
 /* Jumps if the UDP payload content (starting at R0) does not contain the specified QNAME,
  * applying MDNS case insensitivity.
+ * SAFE version PASSES corrupt packets, while the other one DROPS.
  * R0: Offset to UDP payload content
  * imm1: Opcode
  * imm2: Label offset
@@ -237,9 +238,11 @@ typedef union {
  * e.g.: "jdnsqmatch R0,label,0x0c,\002aa\005local\0\0"
  */
 #define JDNSQMATCH_EXT_OPCODE 43
+#define JDNSQMATCHSAFE_EXT_OPCODE 45
 /* Jumps if the UDP payload content (starting at R0) does not contain one
  * of the specified NAMEs in answers/authority/additional records, applying
  * case insensitivity.
+ * SAFE version PASSES corrupt packets, while the other one DROPS.
  * R=0/1 meaning 'does not match'/'matches'
  * R0: Offset to UDP payload content
  * imm1: Opcode
@@ -248,6 +251,7 @@ typedef union {
  * e.g.: "jdnsamatch R0,label,0x0c,\002aa\005local\0\0"
  */
 #define JDNSAMATCH_EXT_OPCODE 44
+#define JDNSAMATCHSAFE_EXT_OPCODE 46
 
 #define EXTRACT_OPCODE(i) (((i) >> 3) & 31)
 #define EXTRACT_REGISTER(i) ((i) & 1)
