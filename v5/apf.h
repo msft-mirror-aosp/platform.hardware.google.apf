@@ -168,7 +168,7 @@ typedef union {
 #define JGT_OPCODE 17   // Compare greater than and branch, e.g. "jgt R0,5,label"
 #define JLT_OPCODE 18   // Compare less than and branch, e.g. "jlt R0,5,label"
 #define JSET_OPCODE 19  // Compare any bits set and branch, e.g. "jset R0,5,label"
-#define JNEBS_OPCODE 20 // Compare not equal byte sequence, e.g. "jnebs R0,5,label,0x1122334455"
+#define JBSMATCH_OPCODE 20 // Compare byte sequence [R=0 not] equal, e.g. "jbsne R0,2,label,0x1122"
 #define EXT_OPCODE 21   // Immediate value is one of *_EXT_OPCODE
 #define LDDW_OPCODE 22  // Load 4 bytes from data address (register + simm): "lddw R0, [5+R1]"
 #define STDW_OPCODE 23  // Store 4 bytes to data address (register + simm): "stdw R0, [5+R1]"
@@ -205,11 +205,15 @@ typedef union {
  */
 #define ALLOCATE_EXT_OPCODE 36
 /* Transmit and deallocate the buffer (transmission can be delayed until the program
- * terminates). R=0 means discard the buffer, R=1 means transmit the buffer.
- * "e.g. trans"
- * "e.g. discard"
+ * terminates).  Length of buffer is the output buffer pointer (0 means discard).
+ * R=1 iff udp style L4 checksum
+ * u8 imm2 - ip header offset from start of buffer (255 for non-ip packets)
+ * u8 imm3 - offset from start of buffer to store L4 checksum (255 for no L4 checksum)
+ * u8 imm4 - offset from start of buffer to begin L4 checksum calculation (present iff imm3 != 255)
+ * u16 imm5 - partial checksum value to include in L4 checksum (present iff imm3 != 255)
+ * "e.g. transmit"
  */
-#define TRANSMITDISCARD_EXT_OPCODE 37
+#define TRANSMIT_EXT_OPCODE 37
 /* Write 1, 2 or 4 byte value from register to the output buffer and auto-increment the
  * output buffer pointer.
  * e.g. "ewrite1 r0"
@@ -219,15 +223,17 @@ typedef union {
 #define EWRITE4_EXT_OPCODE 40
 /* Copy bytes from input packet/APF program/data region to output buffer and
  * auto-increment the output buffer pointer.
- * The copy src offset is stored in R0.
- * when R=0, the copy length is stored in (u8)imm2.
- * when R=1, the copy length is stored in R1.
- * e.g. "pktcopy r0, 5", "pktcopy r0, r1", "datacopy r0, 5", "datacopy r0, r1"
+ * Register bit is used to specify the source of data copy.
+ * R=0 means copy from packet.
+ * R=1 means copy from APF program/data region.
+ * The source offset is stored in R0, copy length is stored in u8 imm2 or R1.
+ * e.g. "epktcopy r0, 16", "edatacopy r0, 16", "epktcopy r0, r1", "edatacopy r0, r1"
  */
-#define EPKTCOPY_EXT_OPCODE 41
-#define EDATACOPY_EXT_OPCODE 42
+#define EPKTDATACOPYIMM_EXT_OPCODE 41
+#define EPKTDATACOPYR1_EXT_OPCODE 42
 /* Jumps if the UDP payload content (starting at R0) does not contain the specified QNAME,
  * applying MDNS case insensitivity.
+ * SAFE version PASSES corrupt packets, while the other one DROPS.
  * R0: Offset to UDP payload content
  * imm1: Opcode
  * imm2: Label offset
@@ -236,9 +242,11 @@ typedef union {
  * e.g.: "jdnsqmatch R0,label,0x0c,\002aa\005local\0\0"
  */
 #define JDNSQMATCH_EXT_OPCODE 43
+#define JDNSQMATCHSAFE_EXT_OPCODE 45
 /* Jumps if the UDP payload content (starting at R0) does not contain one
  * of the specified NAMEs in answers/authority/additional records, applying
  * case insensitivity.
+ * SAFE version PASSES corrupt packets, while the other one DROPS.
  * R=0/1 meaning 'does not match'/'matches'
  * R0: Offset to UDP payload content
  * imm1: Opcode
@@ -247,6 +255,10 @@ typedef union {
  * e.g.: "jdnsamatch R0,label,0x0c,\002aa\005local\0\0"
  */
 #define JDNSAMATCH_EXT_OPCODE 44
+#define JDNSAMATCHSAFE_EXT_OPCODE 46
+
+// This extended opcode is used to implement PKTDATACOPY_OPCODE
+#define PKTDATACOPYIMM_EXT_OPCODE 65536
 
 #define EXTRACT_OPCODE(i) (((i) >> 3) & 31)
 #define EXTRACT_REGISTER(i) ((i) & 1)
