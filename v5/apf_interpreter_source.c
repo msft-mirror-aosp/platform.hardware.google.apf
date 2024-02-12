@@ -293,14 +293,7 @@ static int do_apf_run(apf_context* ctx) {
               imm = PKTDATACOPYIMM_EXT_OPCODE;
               FALLTHROUGH;
           case EXT_OPCODE:
-              if (
-// If LDM_EXT_OPCODE is 0 and imm is compared with it, a compiler error will result,
-// instead just enforce that imm is unsigned (so it's always greater or equal to 0).
-#if LDM_EXT_OPCODE == 0
-                  ENFORCE_UNSIGNED(imm) &&
-#else
-                  imm >= LDM_EXT_OPCODE &&
-#endif
+              if (// imm >= LDM_EXT_OPCODE &&  -- but note imm is u32 and LDM_EXT_OPCODE is 0
                   imm < (LDM_EXT_OPCODE + MEMORY_ITEMS)) {
                 REG = ctx->mem.slot[imm - LDM_EXT_OPCODE];
               } else if (imm >= STM_EXT_OPCODE && imm < (STM_EXT_OPCODE + MEMORY_ITEMS)) {
