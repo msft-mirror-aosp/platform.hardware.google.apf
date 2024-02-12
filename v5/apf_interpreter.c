@@ -661,6 +661,17 @@ typedef struct {
     memory_type mem;   /* Memory slot values. */
 } apf_context;
 
+int do_transmit_buffer(apf_context* ctx, u32 pkt_len, u8 dscp) {
+    int ret = apf_transmit_buffer(ctx->caller_ctx, ctx->tx_buf, pkt_len, dscp);
+    ctx->tx_buf = NULL;
+    ctx->tx_buf_len = 0;
+    return ret;
+}
+
+static int do_discard_buffer(apf_context* ctx) {
+    return do_transmit_buffer(ctx, 0 /* pkt_len */, 0 /* dscp */);
+}
+
 static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len,
                       const u32 ram_len, const u8* const packet,
                       const u32 packet_len) {
@@ -905,9 +916,7 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                     /* If pkt_len > allocate_buffer_len, it means sth. wrong */
                     /* happened and the tx_buf should be deallocated. */
                     if (pkt_len > ctx->tx_buf_len) {
-                        apf_transmit_buffer(ctx->caller_ctx, ctx->tx_buf, 0 /* len */, 0 /* dscp */);
-                        ctx->tx_buf = NULL;
-                        ctx->tx_buf_len = 0;
+                        do_discard_buffer(ctx);
                         return PASS_PACKET;
                     }
                     /* tx_buf_len cannot be large because we'd run out of RAM, */
@@ -925,9 +934,7 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                     int dscp = csum_and_return_dscp(ctx->tx_buf, (s32)pkt_len, ip_ofs,
                                                     partial_csum, csum_start, csum_ofs,
                                                     (bool)reg_num);
-                    int ret = apf_transmit_buffer(ctx->caller_ctx, ctx->tx_buf, pkt_len, dscp);
-                    ctx->tx_buf = NULL;
-                    ctx->tx_buf_len = 0;
+                    int ret = do_transmit_buffer(ctx, pkt_len, dscp);
                     if (ret) { counter[-4]++; return PASS_PACKET; } /* transmit failure */
                     break;
                   case EPKTDATACOPYIMM_EXT_OPCODE:  /* 41 */
@@ -1088,5 +1095,7 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
   apf_ctx.mem.named.filter_age = filter_age_16384ths >> 14;
   apf_ctx.mem.named.filter_age_16384ths = filter_age_16384ths;
 
-  return do_apf_run(&apf_ctx, (u8*)program, program_len, ram_len, packet, packet_len);
+  int ret = do_apf_run(&apf_ctx, (u8*)program, program_len, ram_len, packet, packet_len);
+  if (apf_ctx.tx_buf) do_discard_buffer(&apf_ctx);
+  return ret;
 }
