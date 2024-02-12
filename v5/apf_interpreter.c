@@ -689,7 +689,6 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
 /* Accept packet if not within data bounds */
 #define ASSERT_IN_DATA_BOUNDS(p, size) ASSERT_RETURN(IN_DATA_BOUNDS(p, size))
 
-#define pc (ctx->pc)
   /* Counters start at end of RAM and count *backwards* so this array takes negative integers. */
   u32 *counter = (u32*)(program + ram_len);
 
@@ -715,20 +714,20 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
 /* Decode the imm length, does not do range checking. */
 /* But note that program is at least 20 bytes shorter than ram, so first few */
 /* immediates can always be safely decoded without exceeding ram buffer. */
-#define DECODE_IMM(value, length)                   \
-    do {                                            \
-        value = 0;                                  \
-        u32 i;                                      \
-        for (i = 0; i < (length); i++)              \
-            value = (value << 8) | program[pc++];   \
+#define DECODE_IMM(value, length)                      \
+    do {                                               \
+        value = 0;                                     \
+        u32 i;                                         \
+        for (i = 0; i < (length); i++)                 \
+            value = (value << 8) | program[ctx->pc++]; \
     } while (0)
 
   do {
-      APF_TRACE_HOOK(pc, ctx->R, program, program_len, packet, packet_len, ctx->mem.slot, ram_len);
-      if (pc == program_len + 1) return DROP_PACKET;
-      if (pc >= program_len) return PASS_PACKET;
+      APF_TRACE_HOOK(ctx->pc, ctx->R, program, program_len, packet, packet_len, ctx->mem.slot, ram_len);
+      if (ctx->pc == program_len + 1) return DROP_PACKET;
+      if (ctx->pc >= program_len) return PASS_PACKET;
 
-      const u8 bytecode = program[pc++];
+      const u8 bytecode = program[ctx->pc++];
       const u32 opcode = EXTRACT_OPCODE(bytecode);
       const u32 reg_num = EXTRACT_REGISTER(bytecode);
 #define REG (ctx->R[reg_num])
@@ -802,7 +801,7 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                 ctx->v6 = (u8)true;
               }
               /* This can jump backwards. Infinite looping prevented by instructions_remaining. */
-              pc += imm;
+              ctx->pc += imm;
               break;
           case JEQ_OPCODE:
           case JNE_OPCODE:
@@ -819,11 +818,11 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                   DECODE_IMM(cmp_imm, cmp_imm_len); /* 2nd imm, at worst 8 bytes past prog_len */
               }
               switch (opcode) {
-                  case JEQ_OPCODE:  if (ctx->R[0] == cmp_imm) pc += imm; break;
-                  case JNE_OPCODE:  if (ctx->R[0] != cmp_imm) pc += imm; break;
-                  case JGT_OPCODE:  if (ctx->R[0] >  cmp_imm) pc += imm; break;
-                  case JLT_OPCODE:  if (ctx->R[0] <  cmp_imm) pc += imm; break;
-                  case JSET_OPCODE: if (ctx->R[0] &  cmp_imm) pc += imm; break;
+                  case JEQ_OPCODE:  if (ctx->R[0] == cmp_imm) ctx->pc += imm; break;
+                  case JNE_OPCODE:  if (ctx->R[0] != cmp_imm) ctx->pc += imm; break;
+                  case JGT_OPCODE:  if (ctx->R[0] >  cmp_imm) ctx->pc += imm; break;
+                  case JLT_OPCODE:  if (ctx->R[0] <  cmp_imm) ctx->pc += imm; break;
+                  case JSET_OPCODE: if (ctx->R[0] &  cmp_imm) ctx->pc += imm; break;
                   case JBSMATCH_OPCODE: {
                       /* cmp_imm is size in bytes of data to compare. */
                       /* pc is offset of program bytes to compare. */
@@ -831,15 +830,15 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                       /* REG is offset of packet bytes to compare. */
                       if (len_field > 2) return PASS_PACKET; /* guarantees cmp_imm <= 0xFFFF */
                       /* pc < program_len < ram_len < 2GiB, thus pc + cmp_imm cannot wrap */
-                      if (!IN_RAM_BOUNDS(pc + cmp_imm - 1)) return PASS_PACKET;
+                      if (!IN_RAM_BOUNDS(ctx->pc + cmp_imm - 1)) return PASS_PACKET;
                       ASSERT_IN_PACKET_BOUNDS(REG);
                       const u32 last_packet_offs = REG + cmp_imm - 1;
                       ASSERT_RETURN(last_packet_offs >= REG);
                       ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
-                      if (memcmp(program + pc, packet + REG, cmp_imm))
-                          pc += imm;
+                      if (memcmp(program + ctx->pc, packet + REG, cmp_imm))
+                          ctx->pc += imm;
                       /* skip past comparison bytes */
-                      pc += cmp_imm;
+                      ctx->pc += cmp_imm;
                       break;
                   }
               }
@@ -973,7 +972,7 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                         DECODE_IMM(qtype, 1); /* 3rd imm, at worst 9 bytes past prog_len */
                     }
                     u32 udp_payload_offset = ctx->R[0];
-                    match_result_type match_rst = match_names(program + pc,
+                    match_result_type match_rst = match_names(program + ctx->pc,
                                                               program + program_len,
                                                               packet + udp_payload_offset,
                                                               packet_len - udp_payload_offset,
@@ -983,12 +982,12 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                         counter[-5]++; /* increment error dns packet counter */
                         return (imm >= JDNSQMATCHSAFE_EXT_OPCODE) ? PASS_PACKET : DROP_PACKET;
                     }
-                    while (pc + 1 < program_len && !(program[pc] == 0 && program[pc + 1] == 0)) {
-                        pc++;
+                    while (ctx->pc + 1 < program_len && (program[ctx->pc] || program[ctx->pc + 1])) {
+                        ctx->pc++;
                     }
-                    pc += 2;
+                    ctx->pc += 2;
                     /* relies on reg_num in {0,1} and match_rst being {false=0, true=1} */
-                    if (!(reg_num ^ (u32)match_rst)) pc += jump_offs;
+                    if (!(reg_num ^ (u32)match_rst)) ctx->pc += jump_offs;
                     break;
                   }
                   case EWRITE1_EXT_OPCODE:
