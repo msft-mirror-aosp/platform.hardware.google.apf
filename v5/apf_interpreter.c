@@ -632,8 +632,6 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
     } while (0)
 #endif
 
-/* Frame header size should be 14 */
-#define APF_FRAME_HEADER_SIZE 14
 /* Return code indicating "packet" should accepted. */
 #define PASS_PACKET 1
 /* Return code indicating "packet" should be dropped. */
@@ -696,10 +694,10 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
   /* Counters start at end of RAM and count *backwards* so this array takes negative integers. */
   u32 *counter = (u32*)(program + ram_len);
 
-  ASSERT_IN_PACKET_BOUNDS(APF_FRAME_HEADER_SIZE);
+  ASSERT_IN_PACKET_BOUNDS(ETH_HLEN);
   /* Only populate if IP version is IPv4. */
-  if ((packet[APF_FRAME_HEADER_SIZE] & 0xf0) == 0x40) {
-      ctx->mem.named.ipv4_header_size = (packet[APF_FRAME_HEADER_SIZE] & 15) * 4;
+  if ((packet[ETH_HLEN] & 0xf0) == 0x40) {
+      ctx->mem.named.ipv4_header_size = (packet[ETH_HLEN] & 15) * 4;
   }
   /* Count of instructions remaining to execute. This is done to ensure an */
   /* upper bound on execution time. It should never be hit and is only for */
