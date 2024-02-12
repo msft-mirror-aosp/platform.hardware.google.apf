@@ -68,7 +68,7 @@ typedef struct {
     u8 v6;             // Set to 1 by first jmpdata (APFv6+) instruction
 //  u16 packet_len;    //
     u32 pc;            // Program counter.
-    u32 registers[2];  // Register values.
+    u32 R[2];          // Register values.
     memory_type mem;   // Memory slot values.
 } apf_context;
 
@@ -103,7 +103,6 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
 #define ASSERT_IN_DATA_BOUNDS(p, size) ASSERT_RETURN(IN_DATA_BOUNDS(p, size))
 
 #define pc (ctx->pc)
-#define registers (ctx->registers)
   // Counters start at end of RAM and count *backwards* so this array takes negative integers.
   u32 *counter = (u32*)(program + ram_len);
 
@@ -138,15 +137,15 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
     } while (0)
 
   do {
-      APF_TRACE_HOOK(pc, registers, program, program_len, packet, packet_len, ctx->mem.slot, ram_len);
+      APF_TRACE_HOOK(pc, ctx->R, program, program_len, packet, packet_len, ctx->mem.slot, ram_len);
       if (pc == program_len + 1) return DROP_PACKET;
       if (pc >= program_len) return PASS_PACKET;
 
       const u8 bytecode = program[pc++];
       const u32 opcode = EXTRACT_OPCODE(bytecode);
       const u32 reg_num = EXTRACT_REGISTER(bytecode);
-#define REG (registers[reg_num])
-#define OTHER_REG (registers[reg_num ^ 1])
+#define REG (ctx->R[reg_num])
+#define OTHER_REG (ctx->R[reg_num ^ 1])
       // All instructions have immediate fields, so load them now.
       const u32 len_field = EXTRACT_IMM_LENGTH(bytecode);
       u32 imm = 0;
@@ -178,7 +177,7 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
               u32 offs = imm;
               if (opcode >= LDBX_OPCODE) {
                   // Note: this can overflow and actually decrease offs.
-                  offs += registers[1];
+                  offs += ctx->R[1];
               }
               ASSERT_IN_PACKET_BOUNDS(offs);
               u32 load_size = 0;
@@ -227,17 +226,17 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
               // Load second immediate field.
               u32 cmp_imm = 0;
               if (reg_num == 1) {
-                  cmp_imm = registers[1];
+                  cmp_imm = ctx->R[1];
               } else if (len_field != 0) {
                   u32 cmp_imm_len = 1 << (len_field - 1);
                   DECODE_IMM(cmp_imm, cmp_imm_len); // 2nd imm, at worst 8 bytes past prog_len
               }
               switch (opcode) {
-                  case JEQ_OPCODE:  if (registers[0] == cmp_imm) pc += imm; break;
-                  case JNE_OPCODE:  if (registers[0] != cmp_imm) pc += imm; break;
-                  case JGT_OPCODE:  if (registers[0] >  cmp_imm) pc += imm; break;
-                  case JLT_OPCODE:  if (registers[0] <  cmp_imm) pc += imm; break;
-                  case JSET_OPCODE: if (registers[0] &  cmp_imm) pc += imm; break;
+                  case JEQ_OPCODE:  if (ctx->R[0] == cmp_imm) pc += imm; break;
+                  case JNE_OPCODE:  if (ctx->R[0] != cmp_imm) pc += imm; break;
+                  case JGT_OPCODE:  if (ctx->R[0] >  cmp_imm) pc += imm; break;
+                  case JLT_OPCODE:  if (ctx->R[0] <  cmp_imm) pc += imm; break;
+                  case JSET_OPCODE: if (ctx->R[0] &  cmp_imm) pc += imm; break;
                   case JBSMATCH_OPCODE: {
                       // cmp_imm is size in bytes of data to compare.
                       // pc is offset of program bytes to compare.
@@ -259,22 +258,22 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
               }
               break;
           }
-          case ADD_OPCODE: registers[0] += reg_num ? registers[1] : imm; break;
-          case MUL_OPCODE: registers[0] *= reg_num ? registers[1] : imm; break;
-          case AND_OPCODE: registers[0] &= reg_num ? registers[1] : imm; break;
-          case OR_OPCODE:  registers[0] |= reg_num ? registers[1] : imm; break;
+          case ADD_OPCODE: ctx->R[0] += reg_num ? ctx->R[1] : imm; break;
+          case MUL_OPCODE: ctx->R[0] *= reg_num ? ctx->R[1] : imm; break;
+          case AND_OPCODE: ctx->R[0] &= reg_num ? ctx->R[1] : imm; break;
+          case OR_OPCODE:  ctx->R[0] |= reg_num ? ctx->R[1] : imm; break;
           case DIV_OPCODE: {
-              const u32 div_operand = reg_num ? registers[1] : imm;
+              const u32 div_operand = reg_num ? ctx->R[1] : imm;
               ASSERT_RETURN(div_operand);
-              registers[0] /= div_operand;
+              ctx->R[0] /= div_operand;
               break;
           }
           case SH_OPCODE: {
-              const s32 shift_val = reg_num ? (s32)registers[1] : signed_imm;
+              const s32 shift_val = reg_num ? (s32)ctx->R[1] : signed_imm;
               if (shift_val > 0)
-                  registers[0] <<= shift_val;
+                  ctx->R[0] <<= shift_val;
               else
-                  registers[0] >>= -shift_val;
+                  ctx->R[0] >>= -shift_val;
               break;
           }
           case LI_OPCODE:
@@ -350,10 +349,10 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                     break;
                   case EPKTDATACOPYIMM_EXT_OPCODE:  // 41
                   case EPKTDATACOPYR1_EXT_OPCODE:   // 42
-                    pktcopy_src_offset = registers[0];
+                    pktcopy_src_offset = ctx->R[0];
                     FALLTHROUGH;
                   case PKTDATACOPYIMM_EXT_OPCODE: { // 65536
-                    u32 copy_len = registers[1];
+                    u32 copy_len = ctx->R[1];
                     if (imm != EPKTDATACOPYR1_EXT_OPCODE) {
                         DECODE_IMM(copy_len, 1); // 2nd imm, at worst 8 bytes past prog_len
                     }
@@ -386,7 +385,7 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                     if (imm & 1) { // JDNSQMATCH & JDNSQMATCHSAFE are *odd* extended opcodes
                         DECODE_IMM(qtype, 1); // 3rd imm, at worst 9 bytes past prog_len
                     }
-                    u32 udp_payload_offset = registers[0];
+                    u32 udp_payload_offset = ctx->R[0];
                     match_result_type match_rst = match_names(program + pc,
                                                               program + program_len,
                                                               packet + udp_payload_offset,
