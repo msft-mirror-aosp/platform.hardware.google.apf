@@ -64,6 +64,7 @@ typedef struct {
     void *caller_ctx;  // Passed in to interpreter, passed through to alloc/transmit.
     u8* tx_buf;        // The output buffer pointer
     u32 tx_buf_len;    // The length of the output buffer
+    u8* program;       // Pointer to program/data buffer
 //  u8 err_code;       //
     u8 v6;             // Set to 1 by first jmpdata (APFv6+) instruction
 //  u16 packet_len;    //
@@ -81,6 +82,24 @@ int do_transmit_buffer(apf_context* ctx, u32 pkt_len, u8 dscp) {
 
 static int do_discard_buffer(apf_context* ctx) {
     return do_transmit_buffer(ctx, 0 /* pkt_len */, 0 /* dscp */);
+}
+
+// Decode the imm length, does not do range checking.
+// But note that program is at least 20 bytes shorter than ram, so first few
+// immediates can always be safely decoded without exceeding ram buffer.
+static u32 decode_imm(apf_context* ctx, u32 length) {
+    u32 i, v = 0;
+    for (i = 0; i < length; ++i) v = (v << 8) | ctx->program[ctx->pc++];
+    return v;
+}
+
+#define DECODE_U8() (ctx->program[ctx->pc++])
+
+static u16 decode_be16(apf_context* ctx) {
+    u16 v = ctx->program[ctx->pc++];
+    v <<= 8;
+    v |= ctx->program[ctx->pc++];
+    return v;
 }
 
 static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len,
@@ -124,17 +143,6 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
 // Accept packet if not write within allocated output buffer
 #define ASSERT_IN_OUTPUT_BOUNDS(p, size) ASSERT_RETURN(IN_OUTPUT_BOUNDS(p, size))
 
-// Decode the imm length, does not do range checking.
-// But note that program is at least 20 bytes shorter than ram, so first few
-// immediates can always be safely decoded without exceeding ram buffer.
-#define DECODE_IMM(value, length)                      \
-    do {                                               \
-        value = 0;                                     \
-        u32 i;                                         \
-        for (i = 0; i < (length); i++)                 \
-            value = (value << 8) | program[ctx->pc++]; \
-    } while (0)
-
   do {
       APF_TRACE_HOOK(ctx->pc, ctx->R, program, program_len, packet, packet_len, ctx->mem.slot, ram_len);
       if (ctx->pc == program_len + 1) return DROP_PACKET;
@@ -151,7 +159,7 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
       s32 signed_imm = 0;
       if (len_field != 0) {
           const u32 imm_len = 1 << (len_field - 1);
-          DECODE_IMM(imm, imm_len); // 1st immediate, at worst bytes 1-4 past opcode/program_len
+          imm = decode_imm(ctx, imm_len); // 1st imm, at worst bytes 1-4 past opcode/program_len
           // Sign extend imm into signed_imm.
           signed_imm = (s32) (imm << ((4 - imm_len) * 8));
           signed_imm >>= (4 - imm_len) * 8;
@@ -228,7 +236,7 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                   cmp_imm = ctx->R[1];
               } else if (len_field != 0) {
                   u32 cmp_imm_len = 1 << (len_field - 1);
-                  DECODE_IMM(cmp_imm, cmp_imm_len); // 2nd imm, at worst 8 bytes past prog_len
+                  cmp_imm = decode_imm(ctx, cmp_imm_len); // 2nd imm, at worst 8 bytes past prog_len
               }
               switch (opcode) {
                   case JEQ_OPCODE:  if (ctx->R[0] == cmp_imm) ctx->pc += imm; break;
@@ -310,7 +318,7 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                     if (reg_num == 0) {
                         ctx->tx_buf_len = REG;
                     } else {
-                        DECODE_IMM(ctx->tx_buf_len, 2); // 2nd imm, at worst 6 bytes past prog_len
+                        ctx->tx_buf_len = decode_be16(ctx); // 2nd imm, at worst 6 B past prog_len
                     }
                     // checksumming functions requires minimum 266 byte buffer for correctness
                     if (ctx->tx_buf_len < 266) ctx->tx_buf_len = 266;
@@ -331,14 +339,13 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                     // tx_buf_len cannot be large because we'd run out of RAM,
                     // so the above unsigned comparison effectively guarantees casting pkt_len
                     // to a signed value does not result in it going negative.
-                    u8 ip_ofs, csum_ofs;
+                    u8 ip_ofs = DECODE_U8();              // 2nd imm, at worst 5 B past prog_len
+                    u8 csum_ofs = DECODE_U8();            // 3rd imm, at worst 6 B past prog_len
                     u8 csum_start = 0;
                     u16 partial_csum = 0;
-                    DECODE_IMM(ip_ofs, 1);            // 2nd imm, at worst 5 bytes past prog_len
-                    DECODE_IMM(csum_ofs, 1);          // 3rd imm, at worst 6 bytes past prog_len
                     if (csum_ofs < 255) {
-                        DECODE_IMM(csum_start, 1);    // 4th imm, at worst 7 bytes past prog_len
-                        DECODE_IMM(partial_csum, 2);  // 5th imm, at worst 9 bytes past prog_len
+                        csum_start = DECODE_U8();         // 4th imm, at worst 7 B past prog_len
+                        partial_csum = decode_be16(ctx);  // 5th imm, at worst 9 B past prog_len
                     }
                     int dscp = csum_and_return_dscp(ctx->tx_buf, (s32)pkt_len, ip_ofs,
                                                     partial_csum, csum_start, csum_ofs,
@@ -353,7 +360,7 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                   case PKTDATACOPYIMM_EXT_OPCODE: { // 65536
                     u32 copy_len = ctx->R[1];
                     if (imm != EPKTDATACOPYR1_EXT_OPCODE) {
-                        DECODE_IMM(copy_len, 1); // 2nd imm, at worst 8 bytes past prog_len
+                        copy_len = DECODE_U8();  // 2nd imm, at worst 8 bytes past prog_len
                     }
                     ASSERT_RETURN(ctx->tx_buf != NULL);
                     u32 dst_offs = ctx->mem.named.tx_buf_offset;
@@ -378,11 +385,10 @@ static int do_apf_run(apf_context* ctx, u8* const program, const u32 program_len
                   case JDNSQMATCHSAFE_EXT_OPCODE:   // 45
                   case JDNSAMATCHSAFE_EXT_OPCODE: { // 46
                     const u32 imm_len = 1 << (len_field - 1);
-                    u32 jump_offs;
-                    DECODE_IMM(jump_offs, imm_len); // 2nd imm, at worst 8 bytes past prog_len
+                    u32 jump_offs = decode_imm(ctx, imm_len); // 2nd imm, at worst 8 B past prog_len
                     int qtype = -1;
                     if (imm & 1) { // JDNSQMATCH & JDNSQMATCHSAFE are *odd* extended opcodes
-                        DECODE_IMM(qtype, 1); // 3rd imm, at worst 9 bytes past prog_len
+                        qtype = DECODE_U8();  // 3rd imm, at worst 9 bytes past prog_len
                     }
                     u32 udp_payload_offset = ctx->R[0];
                     match_result_type match_rst = match_names(program + ctx->pc,
@@ -497,6 +503,7 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
 
   apf_context apf_ctx = {};
   apf_ctx.caller_ctx = ctx;
+  apf_ctx.program = (u8*)program;
   // Fill in pre-filled memory slot values.
   apf_ctx.mem.named.program_size = program_len;
   apf_ctx.mem.named.ram_len = ram_len;
