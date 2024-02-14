@@ -55,7 +55,7 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
 u32 apf_version(void) {
-    return 20240209;
+    return 20240214;
 }
 
 typedef struct {
@@ -171,7 +171,7 @@ static int do_apf_run(apf_context* ctx) {
               if (len_field > 2) return PASS_PACKET;  // max 64K counters (ie. imm < 64K)
               if (imm) {
                   if (4 * imm > ctx->ram_len) return PASS_PACKET;
-                  counter[-imm]++;
+                  counter[-(s32)imm]++;
               }
               return reg_num ? DROP_PACKET : PASS_PACKET;
           }
