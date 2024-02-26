@@ -24,7 +24,13 @@
 #define FALLTHROUGH
 #endif
 
-typedef enum { false, true } bool;
+#undef bool
+#undef true
+#undef false
+typedef enum { False, True } Boolean;
+#define bool Boolean
+#define true True
+#define false False
 
 #include "apf_defs.h"
 #include "apf.h"
