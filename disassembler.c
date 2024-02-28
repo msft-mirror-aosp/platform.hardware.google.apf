@@ -270,11 +270,17 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                         bprintf("%d", alloc_len);
                     }
                     break;
-                case TRANSMITDISCARD_EXT_OPCODE:
-                    if (reg_num == 0) {
-                        print_opcode("discard");
-                    } else  {
-                        print_opcode("transmit");
+                case TRANSMIT_EXT_OPCODE:
+                    print_opcode(reg_num ? "transmitudp" : "transmit");
+                    u8 ip_ofs = DECODE_IMM(1);
+                    u8 csum_ofs = DECODE_IMM(1);
+                    if (csum_ofs < 255) {
+                        u8 csum_start = DECODE_IMM(1);
+                        u16 partial_csum = DECODE_IMM(2);
+                        bprintf("ip_ofs=%d, csum_ofs=%d, csum_start=%d, partial_csum=0x%04x",
+                                ip_ofs, csum_ofs, csum_start, partial_csum);
+                    } else {
+                        bprintf("ip_ofs=%d", ip_ofs);
                     }
                     break;
                 case EWRITE1_EXT_OPCODE: print_opcode("ewrite1"); bprintf("r%d", reg_num); break;
@@ -296,15 +302,27 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
 
                     break;
                 }
-                case JDNSQMATCH_EXT_OPCODE:
-                case JDNSAMATCH_EXT_OPCODE: {
+                case JDNSQMATCH_EXT_OPCODE:       // 43
+                case JDNSAMATCH_EXT_OPCODE:       // 44
+                case JDNSQMATCHSAFE_EXT_OPCODE:   // 45
+                case JDNSAMATCHSAFE_EXT_OPCODE: { // 46
                     uint32_t offs = DECODE_IMM(1 << (len_field - 1));
-                    uint16_t qtype;
-                    if (imm == JDNSQMATCH_EXT_OPCODE) {
-                        print_opcode(reg_num ? "jdnsqeq" : "jdnsqne");
-                        qtype = DECODE_IMM(1);
-                    } else {
-                        print_opcode(reg_num ? "jdnsaeq" : "jdnsane");
+                    int qtype = -1;
+                    switch(imm) {
+                        case JDNSQMATCH_EXT_OPCODE:
+                            print_opcode(reg_num ? "jdnsqeq" : "jdnsqne");
+                            qtype = DECODE_IMM(1);
+                            break;
+                        case JDNSQMATCHSAFE_EXT_OPCODE:
+                            print_opcode(reg_num ? "jdnsqeqsafe" : "jdnsqnesafe");
+                            qtype = DECODE_IMM(1);
+                            break;
+                        case JDNSAMATCH_EXT_OPCODE:
+                            print_opcode(reg_num ? "jdnsaeq" : "jdnsane"); break;
+                        case JDNSAMATCHSAFE_EXT_OPCODE:
+                            print_opcode(reg_num ? "jdnsaeqsafe" : "jdnsanesafe"); break;
+                        default:
+                            bprintf("unknown_ext %u", imm); break;
                     }
                     bprintf("r0, ");
                     uint32_t end = *ptr2pc;
@@ -314,7 +332,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                     end += 2;
                     print_jump_target(end + offs, program_len);
                     bprintf(", ");
-                    if (imm == JDNSQMATCH_EXT_OPCODE) {
+                    if (imm == JDNSQMATCH_EXT_OPCODE || imm == JDNSQMATCHSAFE_EXT_OPCODE) {
                         bprintf("%d, ", qtype);
                     }
                     while (*ptr2pc < end) {
