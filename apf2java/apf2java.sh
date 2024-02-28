@@ -29,6 +29,7 @@ sed -r \
 's@: ldhx +r([01]), \[r1\+([0-9]+)\]@: gen.addLoad16Indexed(R\1, \2);@;'\
 's@: ldwx +r([01]), \[r1\+([0-9]+)\]@: gen.addLoad32Indexed(R\1, \2);@;'\
 's@: ldm +r([01]), m\[([0-9]+)\]@: gen.addLoadFromMemory(R\1, \2);@;'\
+'/addJumpIfR0(Greater|Less)Than/s@(0x[8-f][0-9a-f]{7})@\1L@;'\
 < apf2java.txt > tmp
 declare -ar LABELS=($(sed -rn 's@.*LABEL_([0-9]+).*@\1@p' < tmp | sort -u))
 for L in "${LABELS[@]}"; do
@@ -36,9 +37,16 @@ for L in "${LABELS[@]}"; do
   sed -r "s@^( +${L}:)@\ngen.defineLabel(LABEL_${L});\n\1@" < tmp > tmp2
   cat tmp2 > tmp
 done
-sed -r 's@^ +[0-9]+: @@' < tmp > tmp2
-cat tmp2 > tmp
-sed -r 's@(LABEL_[0-9]+)@"\1"@' < tmp > tmp2
+
+sed -r \
+'s@^ +[0-9]+: @@;'\
+'s@(LABEL_[0-9]+)@"\1"@;'\
+"s@\"LABEL_${LABELS[-1]}\"@\"LABEL_INC_AND_DROP\"@;"\
+"s@\"LABEL_${LABELS[-2]}\"@\"LABEL_INC_AND_PASS\"@;"\
+"s@\"LABEL_${LABELS[-3]}\"@\"LABEL_UNSOLICITED_MULTICAST_NA\"@;"\
+< tmp > tmp2
+# The above label renames are based on what our current generator emits as prologue.
+
 if [[ "$(egrep -v '^$|gen' < tmp2 | wc -l)" != 0 ]]; then
   echo 'Failure to translate:'
   egrep -v '^$|gen' < tmp2
