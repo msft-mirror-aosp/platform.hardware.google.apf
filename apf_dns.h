@@ -12,11 +12,11 @@
  *
  * @return 1 if matched, 0 if not matched, -1 if error in packet, -2 if error in program.
  */
-match_result_type match_single_name(const u8* needle,
+FUNC(match_result_type match_single_name(const u8* needle,
                                     const u8* const needle_bound,
                                     const u8* const udp,
                                     const u32 udp_len,
-                                    u32* const ofs) {
+                                    u32* const ofs)) {
     u32 first_unread_offset = *ofs;
     bool is_qname_match = true;
     int lvl;
@@ -38,15 +38,21 @@ match_result_type match_single_name(const u8* needle,
             u8 label_size = v;
             if (*ofs + label_size > udp_len) return error_packet;
             if (needle >= needle_bound) return error_program;
-            if (is_qname_match && label_size == *needle++) {
-                if (needle + label_size > needle_bound) return error_program;
-                while (label_size--) {
-                    u8 w = udp[(*ofs)++];
-                    is_qname_match &= (uppercase(w) == *needle++);
+            if (is_qname_match) {
+                u8 len = *needle++;
+                if (len == label_size) {
+                    if (needle + label_size > needle_bound) return error_program;
+                    while (label_size--) {
+                        u8 w = udp[(*ofs)++];
+                        is_qname_match &= (uppercase(w) == *needle++);
+                    }
+                } else {
+                    if (len != 0xFF) is_qname_match = false;
+                    *ofs += label_size;
                 }
             } else {
-                *ofs += label_size;
                 is_qname_match = false;
+                *ofs += label_size;
             }
         } else { /* reached the end of the name */
             if (first_unread_offset > *ofs) *ofs = first_unread_offset;
@@ -69,11 +75,11 @@ match_result_type match_single_name(const u8* needle,
  *
  * @return 1 if matched, 0 if not matched, -1 if error in packet, -2 if error in program.
  */
-match_result_type match_names(const u8* needles,
+FUNC(match_result_type match_names(const u8* needles,
                               const u8* const needle_bound,
                               const u8* const udp,
                               const u32 udp_len,
-                              const int question_type) {
+                              const int question_type)) {
     if (udp_len < 12) return error_packet;  /* lack of dns header */
 
     /* dns header: be16 tid, flags, num_{questions,answers,authority,additional} */
@@ -109,6 +115,7 @@ match_result_type match_names(const u8* needles,
         /* move needles pointer to the next needle. */
         do {
             u8 len = *needles++;
+            if (len == 0xFF) continue;
             if (len > 63) return error_program;
             needles += len;
             if (needles >= needle_bound) return error_program;
