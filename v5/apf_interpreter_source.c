@@ -61,7 +61,7 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
 u32 apf_version(void) {
-    return 20240226;
+    return 20240312;
 }
 
 typedef struct {
@@ -171,9 +171,14 @@ static int do_apf_run(apf_context* ctx) {
           signed_imm >>= (4 - imm_len) * 8;
       }
 
+      // See comment at ADD_OPCODE for the reason for ARITH_REG/arith_imm/arith_signed_imm.
+#define ARITH_REG (ctx->R[reg_num & ctx->v6])
+      u32 arith_imm = (ctx->v6) ? (len_field ? imm : OTHER_REG) : (reg_num ? ctx->R[1] : imm);
+      s32 arith_signed_imm = (ctx->v6) ? (len_field ? signed_imm : (s32)OTHER_REG) : (reg_num ? (s32)ctx->R[1] : signed_imm);
+
       u32 pktcopy_src_offset = 0;  // used for various pktdatacopy opcodes
       switch (opcode) {
-          case PASSDROP_OPCODE: {
+          case PASSDROP_OPCODE: {  // APFv6+
               if (len_field > 2) return PASS_PACKET;  // max 64K counters (ie. imm < 64K)
               if (imm) {
                   if (4 * imm > ctx->ram_len) return PASS_PACKET;
@@ -218,7 +223,7 @@ static int do_apf_run(apf_context* ctx) {
               break;
           }
           case JMP_OPCODE:
-              if (reg_num && !ctx->v6) {
+              if (reg_num && !ctx->v6) {  // APFv6+
                 // First invocation of APFv6 jmpdata instruction
                 counter[-1] = 0x12345678;  // endianness marker
                 counter[-2]++;  // total packets ++
@@ -268,22 +273,25 @@ static int do_apf_run(apf_context* ctx) {
               }
               break;
           }
-          case ADD_OPCODE: ctx->R[0] += reg_num ? ctx->R[1] : imm; break;
-          case MUL_OPCODE: ctx->R[0] *= reg_num ? ctx->R[1] : imm; break;
-          case AND_OPCODE: ctx->R[0] &= reg_num ? ctx->R[1] : imm; break;
-          case OR_OPCODE:  ctx->R[0] |= reg_num ? ctx->R[1] : imm; break;
-          case DIV_OPCODE: {
-              const u32 div_operand = reg_num ? ctx->R[1] : imm;
+          // There is a difference in APFv4 and APFv6 arithmetic behaviour!
+          // APFv4:  R[0] op= Rbit ? R[1] : imm;  (and it thus doesn't make sense to have R=1 && len_field>0)
+          // APFv6+: REG  op= len_field ? imm : OTHER_REG;  (note: this is *DIFFERENT* with R=1 len_field==0)
+          // Furthermore APFv4 uses unsigned imm (except SH), while APFv6 uses signed_imm for ADD/AND/SH.
+          case ADD_OPCODE: ARITH_REG += (ctx->v6) ? (u32)arith_signed_imm : arith_imm; break;
+          case MUL_OPCODE: ARITH_REG *= arith_imm; break;
+          case AND_OPCODE: ARITH_REG &= (ctx->v6) ? (u32)arith_signed_imm : arith_imm; break;
+          case OR_OPCODE:  ARITH_REG |= arith_imm; break;
+          case DIV_OPCODE: {  // see above comment!
+              const u32 div_operand = arith_imm;
               ASSERT_RETURN(div_operand);
-              ctx->R[0] /= div_operand;
+              ARITH_REG /= div_operand;
               break;
           }
-          case SH_OPCODE: {
-              const s32 shift_val = reg_num ? (s32)ctx->R[1] : signed_imm;
-              if (shift_val > 0)
-                  ctx->R[0] <<= shift_val;
+          case SH_OPCODE: {  // see above comment!
+              if (arith_signed_imm >= 0)
+                  ARITH_REG <<= arith_signed_imm;
               else
-                  ctx->R[0] >>= -shift_val;
+                  ARITH_REG >>= -arith_signed_imm;
               break;
           }
           case LI_OPCODE:
@@ -383,7 +391,7 @@ static int do_apf_run(apf_context* ctx) {
                   case JDNSAMATCH_EXT_OPCODE:       // 44
                   case JDNSQMATCHSAFE_EXT_OPCODE:   // 45
                   case JDNSAMATCHSAFE_EXT_OPCODE: { // 46
-                    const u32 imm_len = 1 << (len_field - 1);
+                    const u32 imm_len = 1 << (len_field - 1); // EXT_OPCODE, thus len_field > 0
                     u32 jump_offs = decode_imm(ctx, imm_len); // 2nd imm, at worst 8 B past prog_len
                     int qtype = -1;
                     if (imm & 1) { // JDNSQMATCH & JDNSQMATCHSAFE are *odd* extended opcodes
@@ -501,6 +509,7 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
   apf_ctx.mem.named.program_size = program_len;
   apf_ctx.mem.named.ram_len = ram_len;
   apf_ctx.mem.named.packet_size = packet_len;
+  apf_ctx.mem.named.apf_version = apf_version();
   apf_ctx.mem.named.filter_age = filter_age_16384ths >> 14;
   apf_ctx.mem.named.filter_age_16384ths = filter_age_16384ths;
 
