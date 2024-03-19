@@ -257,6 +257,7 @@ typedef union {
 #define JLT_OPCODE 18   /* Compare less than and branch, e.g. "jlt R0,5,label" */
 #define JSET_OPCODE 19  /* Compare any bits set and branch, e.g. "jset R0,5,label" */
 #define JBSMATCH_OPCODE 20 /* Compare byte sequence [R=0 not] equal, e.g. "jbsne R0,2,label,0x1122" */
+                           /* NOTE: Only APFv6+ implements R=1 'jbseq' version */
 #define EXT_OPCODE 21   /* Immediate value is one of *_EXT_OPCODE */
 #define LDDW_OPCODE 22  /* Load 4 bytes from data address (register + signed imm): "lddw R0, [5+R1]" */
 #define STDW_OPCODE 23  /* Store 4 bytes to data address (register + signed imm): "stdw R0, [5+R1]" */
@@ -800,16 +801,17 @@ static int do_apf_run(apf_context* ctx) {
               /* imm is jump target offset. */
               /* REG is offset of packet bytes to compare. */
               if (cmp_imm > 0xFFFF) return PASS_PACKET;
+              Boolean do_jump = !reg_num;
               /* pc < program_len < ram_len < 2GiB, thus pc + cmp_imm cannot wrap */
               if (!IN_RAM_BOUNDS(ctx->pc + cmp_imm - 1)) return PASS_PACKET;
               ASSERT_IN_PACKET_BOUNDS(REG);
               const u32 last_packet_offs = REG + cmp_imm - 1;
               ASSERT_RETURN(last_packet_offs >= REG);
               ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
-              if (memcmp(ctx->program + ctx->pc, ctx->packet + REG, cmp_imm))
-                  ctx->pc += imm;
+              do_jump ^= !memcmp(ctx->program + ctx->pc, ctx->packet + REG, cmp_imm);
               /* skip past comparison bytes */
               ctx->pc += cmp_imm;
+              if (do_jump) ctx->pc += imm;
               break;
           }
           /* There is a difference in APFv4 and APFv6 arithmetic behaviour! */
