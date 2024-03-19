@@ -355,6 +355,17 @@ typedef union {
 #define JDNSAMATCH_EXT_OPCODE 44
 #define JDNSAMATCHSAFE_EXT_OPCODE 46
 
+/* Jump if register is [not] one of the list of values
+ * R bit - specifies the register (R0/R1) to test
+ * imm1: Extended opcode
+ * imm2: Jump label offset
+ * imm3(u8): top 5 bits - number of following u8/be16/be32 values - 1
+ *        middle 2 bits - 1..4 length of immediates
+ *        bottom 1 bit  - =0 jmp if in set, =1 if not in set
+ * imm4(imm3 * 1/2/3/4 bytes): the values to compare against
+ */
+#define JONEOF_EXT_OPCODE 47
+
 /* This extended opcode is used to implement PKTDATACOPY_OPCODE */
 #define PKTDATACOPYIMM_EXT_OPCODE 65536
 
@@ -596,7 +607,7 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
 u32 apf_version(void) {
-    return 20240314;
+    return 20240315;
 }
 
 typedef struct {
@@ -971,6 +982,23 @@ static int do_apf_run(apf_context* ctx) {
                             (u8)(REG >> (write_len - 1 - i) * 8);
                     }
                     break;
+                  }
+                  case JONEOF_EXT_OPCODE: {
+                    const u32 imm_len = 1 << (len_field - 1); /* ext opcode len_field guaranteed > 0 */
+                    u32 jump_offs = decode_imm(ctx, imm_len); /* 2nd imm, at worst 8 B past prog_len */
+                    u8 imm3 = DECODE_U8();  /* 3rd imm, at worst 9 bytes past prog_len */
+                    Boolean jmp = imm3 & 1;  /* =0 jmp on match, =1 jmp on no match */
+                    u8 len = ((imm3 >> 1) & 3) + 1;  /* size [1..4] in bytes of an element */
+                    u8 cnt = (imm3 >> 3) + 1;  /* number [1..32] of elements in set */
+                    if (ctx->pc + cnt * len > ctx->program_len) return PASS_PACKET;
+                    while (cnt--) {
+                        u32 v = 0;
+                        int i;
+                        for (i = 0; i < len; ++i) v = (v << 8) | DECODE_U8();
+                        if (REG == v) jmp ^= True;
+                    }
+                    if (jmp) ctx->pc += jump_offs;
+                    return PASS_PACKET;
                   }
                   default:  /* Unknown extended opcode */
                     return PASS_PACKET;  /* Bail out */
