@@ -237,11 +237,13 @@ static int do_apf_run(apf_context* ctx) {
           case JGT_OPCODE:
           case JLT_OPCODE:
           case JSET_OPCODE: {
+              // with len_field == 0, we have imm == 0 and thus a jmp +0, ie. a no-op
+              if (len_field == 0) break;
               // Load second immediate field.
               u32 cmp_imm = 0;
               if (reg_num == 1) {
                   cmp_imm = ctx->R[1];
-              } else if (len_field != 0) {
+              } else {
                   u32 cmp_imm_len = 1 << (len_field - 1);
                   cmp_imm = decode_imm(ctx, cmp_imm_len); // 2nd imm, at worst 8 bytes past prog_len
               }
