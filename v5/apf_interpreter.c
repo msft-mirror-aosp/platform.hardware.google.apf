@@ -795,7 +795,7 @@ static int do_apf_run(apf_context* ctx) {
               if (len_field == 0) break;
               /* Load second immediate field. */
               u32 cmp_imm_len = 1 << (len_field - 1);
-              u32 cmp_imm = decode_imm(ctx, cmp_imm_len); /* 2nd imm, at worst 4 bytes past prog_len */
+              u32 cmp_imm = decode_imm(ctx, cmp_imm_len); /* 2nd imm, at worst 8 bytes past prog_len */
               /* cmp_imm is size in bytes of data to compare. */
               /* pc is offset of program bytes to compare. */
               /* imm is jump target offset. */
