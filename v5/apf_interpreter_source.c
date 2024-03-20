@@ -265,16 +265,16 @@ static int do_apf_run(apf_context* ctx) {
               // cmp_imm is size in bytes of data to compare.
               // pc is offset of program bytes to compare.
               // imm is jump target offset.
-              // REG is offset of packet bytes to compare.
+              // R0 is offset of packet bytes to compare.
               if (cmp_imm > 0xFFFF) return PASS_PACKET;
               bool do_jump = !reg_num;
               // pc < program_len < ram_len < 2GiB, thus pc + cmp_imm cannot wrap
               if (!IN_RAM_BOUNDS(ctx->pc + cmp_imm - 1)) return PASS_PACKET;
-              ASSERT_IN_PACKET_BOUNDS(REG);
-              const u32 last_packet_offs = REG + cmp_imm - 1;
-              ASSERT_RETURN(last_packet_offs >= REG);
+              ASSERT_IN_PACKET_BOUNDS(ctx->R[0]);
+              const u32 last_packet_offs = ctx->R[0] + cmp_imm - 1;
+              ASSERT_RETURN(last_packet_offs >= ctx->R[0]);
               ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
-              do_jump ^= !memcmp(ctx->program + ctx->pc, ctx->packet + REG, cmp_imm);
+              do_jump ^= !memcmp(ctx->program + ctx->pc, ctx->packet + ctx->R[0], cmp_imm);
               // skip past comparison bytes
               ctx->pc += cmp_imm;
               if (do_jump) ctx->pc += imm;
