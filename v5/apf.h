@@ -290,7 +290,7 @@ typedef union {
  * imm3(u8): top 5 bits - number of following u8/be16/be32 values - 1
  *        middle 2 bits - 1..4 length of immediates
  *        bottom 1 bit  - =0 jmp if in set, =1 if not in set
- * imm4(imm3 * 1/2/3/4 bytes): the values to compare against
+ * imm4(imm3 * 1/2/3/4 bytes): the *UNIQUE* values to compare against
  */
 #define JONEOF_EXT_OPCODE 47
 
