@@ -188,6 +188,7 @@ typedef union {
                            // NOTE: Only APFv6+ implements R=1 'jbseq' version
 #define EXT_OPCODE 21   // Immediate value is one of *_EXT_OPCODE
 #define LDDW_OPCODE 22  // Load 4 bytes from data address (register + signed imm): "lddw R0, [5+R1]"
+                        // LDDW/STDW in APFv6+ *mode* load/store from counter specified in imm.
 #define STDW_OPCODE 23  // Store 4 bytes to data address (register + signed imm): "stdw R0, [5+R1]"
 
 /* Write 1, 2 or 4 byte immediate to the output buffer and auto-increment the output buffer pointer.

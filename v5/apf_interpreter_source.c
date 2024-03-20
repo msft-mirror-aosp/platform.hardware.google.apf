@@ -61,7 +61,7 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
 u32 apf_version(void) {
-    return 20240313;
+    return 20240314;
 }
 
 typedef struct {
@@ -441,34 +441,38 @@ static int do_apf_run(apf_context* ctx) {
                     return PASS_PACKET;  // Bail out
               }
               break;
-          case LDDW_OPCODE: {
-              u32 offs = OTHER_REG + (u32)signed_imm;
-              u32 size = 4;
-              u32 val = 0;
-              // Negative offsets wrap around the end of the address space.
-              // This allows us to efficiently access the end of the
-              // address space with one-byte immediates without using %=.
-              if (offs & 0x80000000) offs += ctx->ram_len;  // unsigned overflow intended
-              ASSERT_IN_DATA_BOUNDS(offs, size);
-              while (size--) val = (val << 8) | ctx->program[offs++];
-              REG = val;
-              break;
-          }
-          case STDW_OPCODE: {
-              u32 offs = OTHER_REG + (u32)signed_imm;
-              u32 size = 4;
-              u32 val = REG;
-              // Negative offsets wrap around the end of the address space.
-              // This allows us to efficiently access the end of the
-              // address space with one-byte immediates without using %=.
-              if (offs & 0x80000000) offs += ctx->ram_len;  // unsigned overflow intended
-              ASSERT_IN_DATA_BOUNDS(offs, size);
-              while (size--) {
-                  ctx->program[offs++] = (val >> 24);
-                  val <<= 8;
+          case LDDW_OPCODE:
+          case STDW_OPCODE:
+              if (ctx->v6) {
+                  if (!imm) return PASS_PACKET;
+                  if (imm > 0xFFFF) return PASS_PACKET;
+                  if (imm * 4 > ctx->ram_len) return PASS_PACKET;
+                  if (opcode == LDDW_OPCODE) {
+                     REG = counter[-(s32)imm];
+                  } else {
+                     counter[-(s32)imm] = REG;
+                  }
+              } else {
+                  u32 offs = OTHER_REG + (u32)signed_imm;
+                  // Negative offsets wrap around the end of the address space.
+                  // This allows us to efficiently access the end of the
+                  // address space with one-byte immediates without using %=.
+                  if (offs & 0x80000000) offs += ctx->ram_len;  // unsigned overflow intended
+                  u32 size = 4;
+                  ASSERT_IN_DATA_BOUNDS(offs, size);
+                  if (opcode == LDDW_OPCODE) {
+                      u32 val = 0;
+                      while (size--) val = (val << 8) | ctx->program[offs++];
+                      REG = val;
+                  } else {
+                      u32 val = REG;
+                      while (size--) {
+                          ctx->program[offs++] = (val >> 24);
+                          val <<= 8;
+                      }
+                  }
               }
               break;
-          }
           case WRITE_OPCODE: {
               ASSERT_RETURN(ctx->tx_buf);
               ASSERT_RETURN(len_field);
