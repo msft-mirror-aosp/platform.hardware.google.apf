@@ -61,7 +61,7 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
 u32 apf_version(void) {
-    return 20240314;
+    return 20240315;
 }
 
 typedef struct {
@@ -436,6 +436,23 @@ static int do_apf_run(apf_context* ctx) {
                             (u8)(REG >> (write_len - 1 - i) * 8);
                     }
                     break;
+                  }
+                  case JONEOF_EXT_OPCODE: {
+                    const u32 imm_len = 1 << (len_field - 1); // ext opcode len_field guaranteed > 0
+                    u32 jump_offs = decode_imm(ctx, imm_len); // 2nd imm, at worst 8 B past prog_len
+                    u8 imm3 = DECODE_U8();  // 3rd imm, at worst 9 bytes past prog_len
+                    bool jmp = imm3 & 1;  // =0 jmp on match, =1 jmp on no match
+                    u8 len = ((imm3 >> 1) & 3) + 1;  // size [1..4] in bytes of an element
+                    u8 cnt = (imm3 >> 3) + 1;  // number [1..32] of elements in set
+                    if (ctx->pc + cnt * len > ctx->program_len) return PASS_PACKET;
+                    while (cnt--) {
+                        u32 v = 0;
+                        int i;
+                        for (i = 0; i < len; ++i) v = (v << 8) | DECODE_U8();
+                        if (REG == v) jmp ^= true;
+                    }
+                    if (jmp) ctx->pc += jump_offs;
+                    return PASS_PACKET;
                   }
                   default:  // Unknown extended opcode
                     return PASS_PACKET;  // Bail out
