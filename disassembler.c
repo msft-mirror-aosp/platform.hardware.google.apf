@@ -360,9 +360,9 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             PRINT_OPCODE();
             if (v6_mode) {
                 if (opcode == LDDW_OPCODE) {
-                    bprintf("r%u, cnt=%d", reg_num, imm);
+                    bprintf("r%u, counter=%d", reg_num, imm);
                 } else {
-                    bprintf("cnt=%d, r%u", imm, reg_num);
+                    bprintf("counter=%d, r%u", imm, reg_num);
                 }
             } else {
                 if (signed_imm > 0) {
