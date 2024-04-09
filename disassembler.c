@@ -139,7 +139,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 print_opcode("drop");
             }
             if (imm > 0) {
-                bprintf(" %d", imm);
+                bprintf("counter=%d", imm);
             }
             break;
         case LDB_OPCODE:
