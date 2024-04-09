@@ -32,6 +32,7 @@ typedef enum { false, true } bool;
 char print_buf[1024];
 char* buf_ptr;
 int buf_remain;
+bool v6_mode = false;
 
 __attribute__ ((format (printf, 1, 2) ))
 static void bprintf(const char* format, ...) {
@@ -138,7 +139,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 print_opcode("drop");
             }
             if (imm > 0) {
-                bprintf(" %d", imm);
+                bprintf("counter=%d", imm);
             }
             break;
         case LDB_OPCODE:
@@ -162,6 +163,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 PRINT_OPCODE();
                 print_jump_target(*ptr2pc + imm, program_len);
             } else {
+                v6_mode = true;
                 print_opcode("data");
                 bprintf("%d, ", imm);
                 uint32_t len = imm;
@@ -270,11 +272,17 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                         bprintf("%d", alloc_len);
                     }
                     break;
-                case TRANSMITDISCARD_EXT_OPCODE:
-                    if (reg_num == 0) {
-                        print_opcode("discard");
-                    } else  {
-                        print_opcode("transmit");
+                case TRANSMIT_EXT_OPCODE:
+                    print_opcode(reg_num ? "transmitudp" : "transmit");
+                    u8 ip_ofs = DECODE_IMM(1);
+                    u8 csum_ofs = DECODE_IMM(1);
+                    if (csum_ofs < 255) {
+                        u8 csum_start = DECODE_IMM(1);
+                        u16 partial_csum = DECODE_IMM(2);
+                        bprintf("ip_ofs=%d, csum_ofs=%d, csum_start=%d, partial_csum=0x%04x",
+                                ip_ofs, csum_ofs, csum_start, partial_csum);
+                    } else {
+                        bprintf("ip_ofs=%d", ip_ofs);
                     }
                     break;
                 case EWRITE1_EXT_OPCODE: print_opcode("ewrite1"); bprintf("r%d", reg_num); break;
@@ -296,25 +304,49 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
 
                     break;
                 }
-                case JDNSQMATCH_EXT_OPCODE: {
-                    if (reg_num == 0) {
-                        print_opcode("jdnsqne");
-                    } else {
-                        print_opcode("jdnsqeq");
+                case JDNSQMATCH_EXT_OPCODE:       // 43
+                case JDNSAMATCH_EXT_OPCODE:       // 44
+                case JDNSQMATCHSAFE_EXT_OPCODE:   // 45
+                case JDNSAMATCHSAFE_EXT_OPCODE: { // 46
+                    uint32_t offs = DECODE_IMM(1 << (len_field - 1));
+                    int qtype = -1;
+                    switch(imm) {
+                        case JDNSQMATCH_EXT_OPCODE:
+                            print_opcode(reg_num ? "jdnsqeq" : "jdnsqne");
+                            qtype = DECODE_IMM(1);
+                            break;
+                        case JDNSQMATCHSAFE_EXT_OPCODE:
+                            print_opcode(reg_num ? "jdnsqeqsafe" : "jdnsqnesafe");
+                            qtype = DECODE_IMM(1);
+                            break;
+                        case JDNSAMATCH_EXT_OPCODE:
+                            print_opcode(reg_num ? "jdnsaeq" : "jdnsane"); break;
+                        case JDNSAMATCHSAFE_EXT_OPCODE:
+                            print_opcode(reg_num ? "jdnsaeqsafe" : "jdnsanesafe"); break;
+                        default:
+                            bprintf("unknown_ext %u", imm); break;
                     }
                     bprintf("r0, ");
-                    uint32_t offs = DECODE_IMM(1 << (len_field - 1));
-                    uint16_t qtype = DECODE_IMM(1);
                     uint32_t end = *ptr2pc;
                     while (end + 1 < program_len && !(program[end] == 0 && program[end + 1] == 0)) {
                         end++;
                     }
                     end += 2;
                     print_jump_target(end + offs, program_len);
-                    bprintf(", %d, ", qtype);
+                    bprintf(", ");
+                    if (imm == JDNSQMATCH_EXT_OPCODE || imm == JDNSQMATCHSAFE_EXT_OPCODE) {
+                        bprintf("%d, ", qtype);
+                    }
                     while (*ptr2pc < end) {
                         uint8_t byte = program[(*ptr2pc)++];
-                        bprintf("%02x", byte);
+                        // values < 0x40 could be lengths, but - and 0..9 are in practice usually
+                        // too long to be lengths so print them as characters. All other chars < 0x40
+                        // are not valid in dns character.
+                        if (byte == '-' || (byte >= '0' && byte <= '9') || byte >= 0x40) {
+                            bprintf("%c", byte);
+                        } else {
+                            bprintf("(%d)", byte);
+                        }
                     }
                     break;
                 }
@@ -326,12 +358,20 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
         case LDDW_OPCODE:
         case STDW_OPCODE:
             PRINT_OPCODE();
-            if (signed_imm > 0) {
-                bprintf("r%u, [r%u+%d]", reg_num, reg_num ^ 1, signed_imm);
-            } else if (signed_imm < 0) {
-                bprintf("r%u, [r%u-%d]", reg_num, reg_num ^ 1, -signed_imm);
+            if (v6_mode) {
+                if (opcode == LDDW_OPCODE) {
+                    bprintf("r%u, counter=%d", reg_num, imm);
+                } else {
+                    bprintf("counter=%d, r%u", imm, reg_num);
+                }
             } else {
-                bprintf("r%u, [r%u]", reg_num, reg_num ^ 1);
+                if (signed_imm > 0) {
+                    bprintf("r%u, [r%u+%d]", reg_num, reg_num ^ 1, signed_imm);
+                } else if (signed_imm < 0) {
+                    bprintf("r%u, [r%u-%d]", reg_num, reg_num ^ 1, -signed_imm);
+                } else {
+                    bprintf("r%u, [r%u]", reg_num, reg_num ^ 1);
+                }
             }
             break;
         case WRITE_OPCODE: {
@@ -350,9 +390,9 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
         }
         case PKTDATACOPY_OPCODE: {
             if (reg_num == 0) {
-                print_opcode("pcopy");
+                print_opcode("pktcopy");
             } else {
-                print_opcode("dcopy");
+                print_opcode("datacopy");
             }
             uint32_t src_offs = imm;
             uint32_t copy_len = DECODE_IMM(1);
