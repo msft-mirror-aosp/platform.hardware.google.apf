@@ -603,7 +603,6 @@ typedef struct {
     u32 ram_len;       /* Length of the entire apf program/data region */
     const u8* packet;  /* Pointer to input packet buffer */
     u32 packet_len;    /* Length of the input packet buffer */
-/*  u8 err_code;       // */
     u8 v6;             /* Set to 1 by first jmpdata (APFv6+) instruction */
     u32 pc;            /* Program counter. */
     u32 R[2];          /* Register values. */
