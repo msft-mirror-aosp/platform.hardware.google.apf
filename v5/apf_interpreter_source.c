@@ -525,7 +525,7 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
     // This cannot wrap due to previous check.
     if (program_len + 20 > ram_len) return PASS_PACKET;
 
-    apf_context apf_ctx = {};
+    apf_context apf_ctx = { 0 };
     apf_ctx.caller_ctx = ctx;
     apf_ctx.program = (u8*)program;
     apf_ctx.program_len = program_len;
