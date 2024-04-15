@@ -52,7 +52,7 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 // Return code indicating "packet" should accepted.
 #define PASS_PACKET 1
 // Return code indicating "packet" should be dropped.
-#define DROP_PACKET 0
+#define DROP 0
 // Verify an internal condition and accept packet if it fails.
 #define ASSERT_RETURN(c) if (!(c)) return PASS_PACKET
 // If "c" is of an unsigned type, generate a compile warning that gets promoted to an error.
@@ -150,7 +150,7 @@ static int do_apf_run(apf_context* ctx) {
     do {
         APF_TRACE_HOOK(ctx->pc, ctx->R, ctx->program, ctx->program_len,
                        ctx->packet, ctx->packet_len, ctx->mem.slot, ctx->ram_len);
-        if (ctx->pc == ctx->program_len + 1) return DROP_PACKET;
+        if (ctx->pc == ctx->program_len + 1) return DROP;
         if (ctx->pc >= ctx->program_len) return PASS_PACKET;
 
         const u8 bytecode = ctx->program[ctx->pc++];
@@ -183,7 +183,7 @@ static int do_apf_run(apf_context* ctx) {
                 if (4 * imm > ctx->ram_len) return PASS_PACKET;
                 counter[-(s32)imm]++;
             }
-            return reg_num ? DROP_PACKET : PASS_PACKET;
+            return reg_num ? DROP : PASS_PACKET;
           }
           case LDB_OPCODE:
           case LDH_OPCODE:
@@ -412,7 +412,7 @@ static int do_apf_run(apf_context* ctx) {
                 if (match_rst == error_program) return PASS_PACKET;
                 if (match_rst == error_packet) {
                     counter[-5]++; // increment error dns packet counter
-                    return (imm >= JDNSQMATCHSAFE_EXT_OPCODE) ? PASS_PACKET : DROP_PACKET;
+                    return (imm >= JDNSQMATCHSAFE_EXT_OPCODE) ? PASS_PACKET : DROP;
                 }
                 while (ctx->pc + 1 < ctx->program_len &&
                        (ctx->program[ctx->pc] || ctx->program[ctx->pc + 1])) {
