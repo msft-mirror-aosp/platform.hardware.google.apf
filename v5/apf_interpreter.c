@@ -580,11 +580,11 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #endif
 
 /* Return code indicating "packet" should accepted. */
-#define PASS_PACKET 1
+#define EXCEPTION 1
 /* Return code indicating "packet" should be dropped. */
 #define DROP 0
 /* Verify an internal condition and accept packet if it fails. */
-#define ASSERT_RETURN(c) if (!(c)) return PASS_PACKET
+#define ASSERT_RETURN(c) if (!(c)) return EXCEPTION
 /* If "c" is of an unsigned type, generate a compile warning that gets promoted to an error. */
 /* This makes bounds checking simpler because ">= 0" can be avoided. Otherwise adding */
 /* superfluous ">= 0" with unsigned expressions generates compile warnings. */
@@ -681,7 +681,7 @@ static int do_apf_run(apf_context* ctx) {
         APF_TRACE_HOOK(ctx->pc, ctx->R, ctx->program, ctx->program_len,
                        ctx->packet, ctx->packet_len, ctx->mem.slot, ctx->ram_len);
         if (ctx->pc == ctx->program_len + 1) return DROP;
-        if (ctx->pc >= ctx->program_len) return PASS_PACKET;
+        if (ctx->pc >= ctx->program_len) return EXCEPTION;
 
         const u8 bytecode = ctx->program[ctx->pc++];
         const u32 opcode = EXTRACT_OPCODE(bytecode);
@@ -708,12 +708,12 @@ static int do_apf_run(apf_context* ctx) {
         u32 pktcopy_src_offset = 0;  /* used for various pktdatacopy opcodes */
         switch (opcode) {
           case PASSDROP_OPCODE: {  /* APFv6+ */
-            if (len_field > 2) return PASS_PACKET;  /* max 64K counters (ie. imm < 64K) */
+            if (len_field > 2) return EXCEPTION;  /* max 64K counters (ie. imm < 64K) */
             if (imm) {
-                if (4 * imm > ctx->ram_len) return PASS_PACKET;
+                if (4 * imm > ctx->ram_len) return EXCEPTION;
                 counter[-(s32)imm]++;
             }
-            return reg_num ? DROP : PASS_PACKET;
+            return reg_num ? DROP : EXCEPTION;
           }
           case LDB_OPCODE:
           case LDH_OPCODE:
@@ -795,10 +795,10 @@ static int do_apf_run(apf_context* ctx) {
             /* pc is offset of program bytes to compare. */
             /* imm is jump target offset. */
             /* R0 is offset of packet bytes to compare. */
-            if (cmp_imm > 0xFFFF) return PASS_PACKET;
+            if (cmp_imm > 0xFFFF) return EXCEPTION;
             Boolean do_jump = !reg_num;
             /* pc < program_len < ram_len < 2GiB, thus pc + cmp_imm cannot wrap */
-            if (!IN_RAM_BOUNDS(ctx->pc + cmp_imm - 1)) return PASS_PACKET;
+            if (!IN_RAM_BOUNDS(ctx->pc + cmp_imm - 1)) return EXCEPTION;
             ASSERT_IN_PACKET_BOUNDS(ctx->R[0]);
             const u32 last_packet_offs = ctx->R[0] + cmp_imm - 1;
             ASSERT_RETURN(last_packet_offs >= ctx->R[0]);
@@ -866,7 +866,7 @@ static int do_apf_run(apf_context* ctx) {
                 if (!ctx->tx_buf) {  /* allocate failure */
                     ctx->tx_buf_len = 0;
                     counter[-3]++;
-                    return PASS_PACKET;
+                    return EXCEPTION;
                 }
                 memset(ctx->tx_buf, 0, ctx->tx_buf_len);
                 ctx->mem.named.tx_buf_offset = 0;
@@ -878,7 +878,7 @@ static int do_apf_run(apf_context* ctx) {
                 /* happened and the tx_buf should be deallocated. */
                 if (pkt_len > ctx->tx_buf_len) {
                     do_discard_buffer(ctx);
-                    return PASS_PACKET;
+                    return EXCEPTION;
                 }
                 /* tx_buf_len cannot be large because we'd run out of RAM, */
                 /* so the above unsigned comparison effectively guarantees casting pkt_len */
@@ -895,7 +895,7 @@ static int do_apf_run(apf_context* ctx) {
                                                 partial_csum, csum_start, csum_ofs,
                                                 (Boolean)reg_num);
                 int ret = apf_internal_do_transmit_buffer(ctx, pkt_len, dscp);
-                if (ret) { counter[-4]++; return PASS_PACKET; } /* transmit failure */
+                if (ret) { counter[-4]++; return EXCEPTION; } /* transmit failure */
                 break;
               case EPKTDATACOPYIMM_EXT_OPCODE:  /* 41 */
               case EPKTDATACOPYR1_EXT_OPCODE:   /* 42 */
@@ -939,10 +939,10 @@ static int do_apf_run(apf_context* ctx) {
                                                           ctx->packet + udp_payload_offset,
                                                           ctx->packet_len - udp_payload_offset,
                                                           qtype);
-                if (match_rst == error_program) return PASS_PACKET;
+                if (match_rst == error_program) return EXCEPTION;
                 if (match_rst == error_packet) {
                     counter[-5]++; /* increment error dns packet counter */
-                    return (imm >= JDNSQMATCHSAFE_EXT_OPCODE) ? PASS_PACKET : DROP;
+                    return (imm >= JDNSQMATCHSAFE_EXT_OPCODE) ? EXCEPTION : DROP;
                 }
                 while (ctx->pc + 1 < ctx->program_len &&
                        (ctx->program[ctx->pc] || ctx->program[ctx->pc + 1])) {
@@ -973,7 +973,7 @@ static int do_apf_run(apf_context* ctx) {
                 Boolean jmp = imm3 & 1;  /* =0 jmp on match, =1 jmp on no match */
                 u8 len = ((imm3 >> 1) & 3) + 1;  /* size [1..4] in bytes of an element */
                 u8 cnt = (imm3 >> 3) + 1;  /* number [1..32] of elements in set */
-                if (ctx->pc + cnt * len > ctx->program_len) return PASS_PACKET;
+                if (ctx->pc + cnt * len > ctx->program_len) return EXCEPTION;
                 while (cnt--) {
                     u32 v = 0;
                     int i;
@@ -981,18 +981,18 @@ static int do_apf_run(apf_context* ctx) {
                     if (REG == v) jmp ^= True;
                 }
                 if (jmp) ctx->pc += jump_offs;
-                return PASS_PACKET;
+                return EXCEPTION;
               }
               default:  /* Unknown extended opcode */
-                return PASS_PACKET;  /* Bail out */
+                return EXCEPTION;  /* Bail out */
             }
             break;
           case LDDW_OPCODE:
           case STDW_OPCODE:
             if (ctx->v6) {
-                if (!imm) return PASS_PACKET;
-                if (imm > 0xFFFF) return PASS_PACKET;
-                if (imm * 4 > ctx->ram_len) return PASS_PACKET;
+                if (!imm) return EXCEPTION;
+                if (imm > 0xFFFF) return EXCEPTION;
+                if (imm * 4 > ctx->ram_len) return EXCEPTION;
                 if (opcode == LDDW_OPCODE) {
                     REG = counter[-(s32)imm];
                 } else {
@@ -1032,10 +1032,10 @@ static int do_apf_run(apf_context* ctx) {
             break;
           }
           default:  /* Unknown opcode */
-            return PASS_PACKET;  /* Bail out */
+            return EXCEPTION;  /* Bail out */
         }
     } while (instructions_remaining--);
-    return PASS_PACKET;
+    return EXCEPTION;
 }
 
 int apf_run(void* ctx, u32* const program, const u32 program_len,
@@ -1043,17 +1043,17 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
             const u32 packet_len, const u32 filter_age_16384ths) {
     /* Due to direct 32-bit read/write access to counters at end of ram */
     /* APFv6 interpreter requires program & ram_len to be 4 byte aligned. */
-    if (3 & (uintptr_t)program) return PASS_PACKET;
-    if (3 & ram_len) return PASS_PACKET;
+    if (3 & (uintptr_t)program) return EXCEPTION;
+    if (3 & ram_len) return EXCEPTION;
 
     /* We rely on ram_len + 65536 not overflowing, so require ram_len < 2GiB */
     /* Similarly LDDW/STDW have special meaning for negative ram offsets. */
     /* We also don't want garbage like program_len == 0xFFFFFFFF */
-    if ((program_len | ram_len) >> 31) return PASS_PACKET;
+    if ((program_len | ram_len) >> 31) return EXCEPTION;
 
     /* APFv6 requires at least 5 u32 counters at the end of ram, this makes counter[-5]++ valid */
     /* This cannot wrap due to previous check. */
-    if (program_len + 20 > ram_len) return PASS_PACKET;
+    if (program_len + 20 > ram_len) return EXCEPTION;
 
     apf_context apf_ctx = { 0 };
     apf_ctx.caller_ctx = ctx;
