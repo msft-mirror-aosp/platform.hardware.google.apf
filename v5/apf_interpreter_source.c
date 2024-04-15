@@ -63,7 +63,7 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
 u32 apf_version(void) {
-    return 20240315;
+    return 20240316;
 }
 
 typedef struct {
@@ -454,7 +454,7 @@ static int do_apf_run(apf_context* ctx) {
                     if (REG == v) jmp ^= true;
                 }
                 if (jmp) ctx->pc += jump_offs;
-                return EXCEPTION;
+                break;
               }
               default:  // Unknown extended opcode
                 return EXCEPTION;  // Bail out
