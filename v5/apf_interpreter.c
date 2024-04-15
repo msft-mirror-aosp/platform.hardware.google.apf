@@ -580,7 +580,9 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #endif
 
 /* Return code indicating "packet" should accepted. */
-#define EXCEPTION 1
+#define PASS 1
+/* Return code indicating "packet" should be accepted (and something unexpected happened). */
+#define EXCEPTION PASS
 /* Return code indicating "packet" should be dropped. */
 #define DROP 0
 /* Verify an internal condition and accept packet if it fails. */
@@ -681,7 +683,8 @@ static int do_apf_run(apf_context* ctx) {
         APF_TRACE_HOOK(ctx->pc, ctx->R, ctx->program, ctx->program_len,
                        ctx->packet, ctx->packet_len, ctx->mem.slot, ctx->ram_len);
         if (ctx->pc == ctx->program_len + 1) return DROP;
-        if (ctx->pc >= ctx->program_len) return EXCEPTION;
+        if (ctx->pc == ctx->program_len) return PASS;
+        if (ctx->pc > ctx->program_len) return EXCEPTION;
 
         const u8 bytecode = ctx->program[ctx->pc++];
         const u32 opcode = EXTRACT_OPCODE(bytecode);
@@ -713,7 +716,7 @@ static int do_apf_run(apf_context* ctx) {
                 if (4 * imm > ctx->ram_len) return EXCEPTION;
                 counter[-(s32)imm]++;
             }
-            return reg_num ? DROP : EXCEPTION;
+            return reg_num ? DROP : PASS;
           }
           case LDB_OPCODE:
           case LDH_OPCODE:
@@ -942,7 +945,7 @@ static int do_apf_run(apf_context* ctx) {
                 if (match_rst == error_program) return EXCEPTION;
                 if (match_rst == error_packet) {
                     counter[-5]++; /* increment error dns packet counter */
-                    return (imm >= JDNSQMATCHSAFE_EXT_OPCODE) ? EXCEPTION : DROP;
+                    return (imm >= JDNSQMATCHSAFE_EXT_OPCODE) ? PASS : DROP;
                 }
                 while (ctx->pc + 1 < ctx->program_len &&
                        (ctx->program[ctx->pc] || ctx->program[ctx->pc + 1])) {
