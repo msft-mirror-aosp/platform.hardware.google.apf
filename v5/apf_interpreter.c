@@ -582,7 +582,7 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 /* Return code indicating "packet" should accepted. */
 #define PASS 1
 /* Return code indicating "packet" should be accepted (and something unexpected happened). */
-#define EXCEPTION PASS
+#define EXCEPTION 2
 /* Return code indicating "packet" should be dropped. */
 #define DROP 0
 /* Verify an internal condition and accept packet if it fails. */
@@ -593,7 +593,7 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
 u32 apf_version(void) {
-    return 20240316;
+    return 20240317;
 }
 
 typedef struct {
@@ -657,12 +657,16 @@ static int do_apf_run(apf_context* ctx) {
 /* Accept packet if not within data bounds */
 #define ASSERT_IN_DATA_BOUNDS(p, size) ASSERT_RETURN(IN_DATA_BOUNDS(p, size))
 
+    /* APFv6 requires at least 5 u32 counters at the end of ram, this makes counter[-5]++ valid */
+    /* This cannot wrap due to previous check, that enforced program_len & ram_len < 2GiB. */
+    if (ctx->program_len + 20 > ctx->ram_len) return EXCEPTION;
+
     /* Counters start at end of RAM and count *backwards* so this array takes negative integers. */
     u32 *counter = (u32*)(ctx->program + ctx->ram_len);
 
-    ASSERT_IN_PACKET_BOUNDS(ETH_HLEN);
-    /* Only populate if IP version is IPv4. */
-    if ((ctx->packet[ETH_HLEN] & 0xf0) == 0x40) {
+    /* Only populate if packet long enough, and IP version is IPv4. */
+    /* Note: this doesn't actually check the ethertype... */
+    if ((ctx->packet_len >= ETH_HLEN + IPV4_HLEN) && ((ctx->packet[ETH_HLEN] & 0xf0) == 0x40)) {
         ctx->mem.named.ipv4_header_size = (ctx->packet[ETH_HLEN] & 15) * 4;
     }
     /* Count of instructions remaining to execute. This is done to ensure an */
@@ -1054,9 +1058,9 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
     /* We also don't want garbage like program_len == 0xFFFFFFFF */
     if ((program_len | ram_len) >> 31) return EXCEPTION;
 
-    /* APFv6 requires at least 5 u32 counters at the end of ram, this makes counter[-5]++ valid */
-    /* This cannot wrap due to previous check. */
-    if (program_len + 20 > ram_len) return EXCEPTION;
+    /* Any valid ethernet packet should be at least ETH_HLEN long... */
+    if (!packet) return EXCEPTION;
+    if (packet_len < ETH_HLEN) return EXCEPTION;
 
     apf_context apf_ctx = { 0 };
     apf_ctx.caller_ctx = ctx;
@@ -1075,5 +1079,7 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
 
     int ret = do_apf_run(&apf_ctx);
     if (apf_ctx.tx_buf) do_discard_buffer(&apf_ctx);
+    /* Convert any exceptions internal to the program to just normal 'PASS' */
+    if (ret >= EXCEPTION) ret = PASS;
     return ret;
 }
