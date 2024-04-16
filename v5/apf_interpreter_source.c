@@ -155,11 +155,13 @@ static int do_apf_run(apf_context* ctx) {
 #define ASSERT_IN_OUTPUT_BOUNDS(p, size) ASSERT_RETURN(IN_OUTPUT_BOUNDS(p, size))
 
     do {
-        APF_TRACE_HOOK(ctx->pc, ctx->R, ctx->program, ctx->program_len,
-                       ctx->packet, ctx->packet_len, ctx->mem.slot, ctx->ram_len);
-        if (ctx->pc == ctx->program_len + 1) return DROP;
-        if (ctx->pc == ctx->program_len) return PASS;
-        if (ctx->pc > ctx->program_len) return EXCEPTION;
+      APF_TRACE_HOOK(ctx->pc, ctx->R, ctx->program, ctx->program_len,
+                     ctx->packet, ctx->packet_len, ctx->mem.slot, ctx->ram_len);
+      if (ctx->pc == ctx->program_len + 1) return DROP;
+      if (ctx->pc == ctx->program_len) return PASS;
+      if (ctx->pc > ctx->program_len) return EXCEPTION;
+
+      {  // half indent to avoid needless line length...
 
         const u8 bytecode = ctx->program[ctx->pc++];
         const u32 opcode = EXTRACT_OPCODE(bytecode);
@@ -524,6 +526,7 @@ static int do_apf_run(apf_context* ctx) {
           default:  // Unknown opcode
             return EXCEPTION;  // Bail out
         }
+      }
     } while (instructions_remaining--);
     return EXCEPTION;
 }
