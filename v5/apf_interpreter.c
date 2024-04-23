@@ -344,7 +344,7 @@ typedef union {
  * imm1: Extended opcode
  * imm2: Jump label offset
  * imm3(u8): top 5 bits - number of following u8/be16/be32 values - 1
- *        middle 2 bits - 1..4 length of immediates
+ *        middle 2 bits - 1..4 length of immediates - 1
  *        bottom 1 bit  - =0 jmp if in set, =1 if not in set
  * imm4(imm3 * 1/2/3/4 bytes): the *UNIQUE* values to compare against
  */
