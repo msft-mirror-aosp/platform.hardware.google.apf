@@ -185,7 +185,7 @@ typedef union {
 #define JLT_OPCODE 18   // Compare less than and branch, e.g. "jlt R0,5,label"
 #define JSET_OPCODE 19  // Compare any bits set and branch, e.g. "jset R0,5,label"
 #define JBSMATCH_OPCODE 20 // Compare byte sequence [R=0 not] equal, e.g. "jbsne R0,2,label,0x1122"
-                           // NOTE: Only APFv6+ implements R=1 'jbseq' version
+                           // NOTE: Only APFv6+ implements R=1 'jbseq' version and multi match
 #define EXT_OPCODE 21   // Immediate value is one of *_EXT_OPCODE
 #define LDDW_OPCODE 22  // Load 4 bytes from data address (register + signed imm): "lddw R0, [5+R1]"
                         // LDDW/STDW in APFv6+ *mode* load/store from counter specified in imm.
