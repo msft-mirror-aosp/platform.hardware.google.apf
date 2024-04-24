@@ -343,10 +343,10 @@ typedef union {
  * R bit - specifies the register (R0/R1) to test
  * imm1: Extended opcode
  * imm2: Jump label offset
- * imm3(u8): top 5 bits - number of following u8/be16/be32 values - 1
+ * imm3(u8): top 5 bits - number 'n' of following u8/be16/be32 values - 2
  *        middle 2 bits - 1..4 length of immediates - 1
  *        bottom 1 bit  - =0 jmp if in set, =1 if not in set
- * imm4(imm3 * 1/2/3/4 bytes): the *UNIQUE* values to compare against
+ * imm4(n * 1/2/3/4 bytes): the *UNIQUE* values to compare against
  */
 #define JONEOF_EXT_OPCODE 47
 
@@ -997,7 +997,7 @@ static int do_apf_run(apf_context* ctx) {
                 u8 imm3 = DECODE_U8();  /* 3rd imm, at worst 9 bytes past prog_len */
                 Boolean jmp = imm3 & 1;  /* =0 jmp on match, =1 jmp on no match */
                 u8 len = ((imm3 >> 1) & 3) + 1;  /* size [1..4] in bytes of an element */
-                u8 cnt = (imm3 >> 3) + 1;  /* number [1..32] of elements in set */
+                u8 cnt = (imm3 >> 3) + 2;  /* number [2..33] of elements in set */
                 if (ctx->pc + cnt * len > ctx->program_len) return EXCEPTION;
                 while (cnt--) {
                     u32 v = 0;

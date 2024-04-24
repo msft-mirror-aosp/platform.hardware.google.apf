@@ -462,7 +462,7 @@ static int do_apf_run(apf_context* ctx) {
                 u8 imm3 = DECODE_U8();  // 3rd imm, at worst 9 bytes past prog_len
                 bool jmp = imm3 & 1;  // =0 jmp on match, =1 jmp on no match
                 u8 len = ((imm3 >> 1) & 3) + 1;  // size [1..4] in bytes of an element
-                u8 cnt = (imm3 >> 3) + 1;  // number [1..32] of elements in set
+                u8 cnt = (imm3 >> 3) + 2;  // number [2..33] of elements in set
                 if (ctx->pc + cnt * len > ctx->program_len) return EXCEPTION;
                 while (cnt--) {
                     u32 v = 0;
