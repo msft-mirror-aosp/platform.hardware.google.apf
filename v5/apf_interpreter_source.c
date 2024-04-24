@@ -92,7 +92,7 @@ static int do_discard_buffer(apf_context* ctx) {
     return do_transmit_buffer(ctx, 0 /* pkt_len */, 0 /* dscp */);
 }
 
-// Decode the imm length, does not do range checking.
+// Decode an immediate, lengths [0..4] all work, does not do range checking.
 // But note that program is at least 20 bytes shorter than ram, so first few
 // immediates can always be safely decoded without exceeding ram buffer.
 static u32 decode_imm(apf_context* ctx, u32 length) {
@@ -170,13 +170,13 @@ static int do_apf_run(apf_context* ctx) {
 #define OTHER_REG (ctx->R[reg_num ^ 1])
         // All instructions have immediate fields, so load them now.
         const u32 len_field = EXTRACT_IMM_LENGTH(bytecode);
+        const u32 imm_len = ((len_field + 1u) >> 2) + len_field; // 0,1,2,3 -> 0,1,2,4
         u32 pktcopy_src_offset = 0;  // used for various pktdatacopy opcodes
         u32 imm = 0;
         s32 signed_imm = 0;
         u32 arith_imm;
         s32 arith_signed_imm;
         if (len_field != 0) {
-            const u32 imm_len = 1 << (len_field - 1);
             imm = decode_imm(ctx, imm_len); // 1st imm, at worst bytes 1-4 past opcode/program_len
             // Sign extend imm into signed_imm.
             signed_imm = (s32)(imm << ((4 - imm_len) * 8));
@@ -251,14 +251,11 @@ static int do_apf_run(apf_context* ctx) {
           case JLT_OPCODE:
           case JSET_OPCODE: {
             u32 cmp_imm = 0;
-            // with len_field == 0, we have imm == 0 and thus a jmp +0, ie. a no-op
-            if (len_field == 0) break;
             // Load second immediate field.
             if (reg_num == 1) {
                 cmp_imm = ctx->R[1];
             } else {
-                u32 cmp_imm_len = 1 << (len_field - 1);
-                cmp_imm = decode_imm(ctx, cmp_imm_len); // 2nd imm, at worst 8 bytes past prog_len
+                cmp_imm = decode_imm(ctx, imm_len); // 2nd imm, at worst 8 bytes past prog_len
             }
             switch (opcode) {
               case JEQ_OPCODE:  if (ctx->R[0] == cmp_imm) ctx->pc += imm; break;
@@ -270,28 +267,24 @@ static int do_apf_run(apf_context* ctx) {
             break;
           }
           case JBSMATCH_OPCODE: {
-            // with len_field == 0, we have imm == cmp_imm == 0 and thus a jmp +0, ie. a no-op
-            if (len_field) {
-                // Load second immediate field.
-                u32 cmp_imm_len = 1 << (len_field - 1);
-                u32 cmp_imm = decode_imm(ctx, cmp_imm_len); // 2nd imm, at worst 8 bytes past prog_len
-                const u32 last_packet_offs = ctx->R[0] + cmp_imm - 1;
-                bool do_jump = !reg_num;
-                // cmp_imm is size in bytes of data to compare.
-                // pc is offset of program bytes to compare.
-                // imm is jump target offset.
-                // R0 is offset of packet bytes to compare.
-                if (cmp_imm > 0xFFFF) return EXCEPTION;
-                // pc < program_len < ram_len < 2GiB, thus pc + cmp_imm cannot wrap
-                if (!IN_RAM_BOUNDS(ctx->pc + cmp_imm - 1)) return EXCEPTION;
-                ASSERT_IN_PACKET_BOUNDS(ctx->R[0]);
-                ASSERT_RETURN(last_packet_offs >= ctx->R[0]);
-                ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
-                do_jump ^= !memcmp(ctx->program + ctx->pc, ctx->packet + ctx->R[0], cmp_imm);
-                // skip past comparison bytes
-                ctx->pc += cmp_imm;
-                if (do_jump) ctx->pc += imm;
-            }
+            // Load second immediate field.
+            u32 cmp_imm = decode_imm(ctx, imm_len); // 2nd imm, at worst 8 bytes past prog_len
+            const u32 last_packet_offs = ctx->R[0] + cmp_imm - 1;
+            bool do_jump = !reg_num;
+            // cmp_imm is size in bytes of data to compare.
+            // pc is offset of program bytes to compare.
+            // imm is jump target offset.
+            // R0 is offset of packet bytes to compare.
+            if (cmp_imm > 0xFFFF) return EXCEPTION;
+            // pc < program_len < ram_len < 2GiB, thus pc + cmp_imm cannot wrap
+            if (!IN_RAM_BOUNDS(ctx->pc + cmp_imm - 1)) return EXCEPTION;
+            ASSERT_IN_PACKET_BOUNDS(ctx->R[0]);
+            ASSERT_RETURN(last_packet_offs >= ctx->R[0]);
+            ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
+            do_jump ^= !memcmp(ctx->program + ctx->pc, ctx->packet + ctx->R[0], cmp_imm);
+            // skip past comparison bytes
+            ctx->pc += cmp_imm;
+            if (do_jump) ctx->pc += imm;
             break;
           }
           // There is a difference in APFv4 and APFv6 arithmetic behaviour!
@@ -415,7 +408,6 @@ static int do_apf_run(apf_context* ctx) {
               case JDNSAMATCH_EXT_OPCODE:       // 44
               case JDNSQMATCHSAFE_EXT_OPCODE:   // 45
               case JDNSAMATCHSAFE_EXT_OPCODE: { // 46
-                const u32 imm_len = 1 << (len_field - 1); // EXT_OPCODE, thus len_field > 0
                 u32 jump_offs = decode_imm(ctx, imm_len); // 2nd imm, at worst 8 B past prog_len
                 int qtype = -1;
                 if (imm & 1) { // JDNSQMATCH & JDNSQMATCHSAFE are *odd* extended opcodes
@@ -457,7 +449,6 @@ static int do_apf_run(apf_context* ctx) {
                 break;
               }
               case JONEOF_EXT_OPCODE: {
-                const u32 imm_len = 1 << (len_field - 1); // ext opcode len_field guaranteed > 0
                 u32 jump_offs = decode_imm(ctx, imm_len); // 2nd imm, at worst 8 B past prog_len
                 u8 imm3 = DECODE_U8();  // 3rd imm, at worst 9 bytes past prog_len
                 bool jmp = imm3 & 1;  // =0 jmp on match, =1 jmp on no match
