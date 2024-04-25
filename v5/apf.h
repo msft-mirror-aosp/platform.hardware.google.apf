@@ -294,6 +294,12 @@ typedef union {
  */
 #define JONEOF_EXT_OPCODE 47
 
+/* Specify length of exception buffer, which is populated on abnormal program termination.
+ * imm1: Extended opcode
+ * imm2(u16): Length of exception buffer (located *immediately* after the program itself)
+ */
+#define EXCEPTIONBUFFER_EXT_OPCODE 48
+
 // This extended opcode is used to implement PKTDATACOPY_OPCODE
 #define PKTDATACOPYIMM_EXT_OPCODE 65536
 
