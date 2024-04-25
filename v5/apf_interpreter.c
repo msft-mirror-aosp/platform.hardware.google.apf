@@ -350,6 +350,12 @@ typedef union {
  */
 #define JONEOF_EXT_OPCODE 47
 
+/* Specify length of exception buffer, which is populated on abnormal program termination.
+ * imm1: Extended opcode
+ * imm2(u16): Length of exception buffer (located *immediately* after the program itself)
+ */
+#define EXCEPTIONBUFFER_EXT_OPCODE 48
+
 /* This extended opcode is used to implement PKTDATACOPY_OPCODE */
 #define PKTDATACOPYIMM_EXT_OPCODE 65536
 
@@ -598,22 +604,29 @@ extern void APF_TRACE_HOOK(u32 pc, const u32* regs, const u8* program,
 #define ENFORCE_UNSIGNED(c) ((c)==(u32)(c))
 
 u32 apf_version(void) {
-    return 20240317;
+    return 20240401;
 }
 
 typedef struct {
-    void *caller_ctx;  /* Passed in to interpreter, passed through to alloc/transmit. */
-    u8* tx_buf;        /* The output buffer pointer */
-    u32 tx_buf_len;    /* The length of the output buffer */
-    u8* program;       /* Pointer to program/data buffer */
-    u32 program_len;   /* Length of the program */
-    u32 ram_len;       /* Length of the entire apf program/data region */
-    const u8* packet;  /* Pointer to input packet buffer */
-    u32 packet_len;    /* Length of the input packet buffer */
+    /* Note: the following 4 fields take up exactly 8 bytes. */
+    u16 except_buf_sz; /* Length of the exception buffer (at program_len offset) */
+    u8 ptr_size;       /* sizeof(void*) */
     u8 v6;             /* Set to 1 by first jmpdata (APFv6+) instruction */
     u32 pc;            /* Program counter. */
+    /* All the pointers should be next to each other for better struct packing. */
+    /* We are at offset 8, so even 64-bit pointers will not need extra padding. */
+    void *caller_ctx;  /* Passed in to interpreter, passed through to alloc/transmit. */
+    u8* tx_buf;        /* The output buffer pointer */
+    u8* program;       /* Pointer to program/data buffer */
+    const u8* packet;  /* Pointer to input packet buffer */
+    /* Order fields in order of decreasing size */
+    u32 tx_buf_len;    /* The length of the output buffer */
+    u32 program_len;   /* Length of the program */
+    u32 ram_len;       /* Length of the entire apf program/data region */
+    u32 packet_len;    /* Length of the input packet buffer */
     u32 R[2];          /* Register values. */
-    memory_type mem;   /* Memory slot values. */
+    memory_type mem;   /* Memory slot values.  (array of u32s) */
+    /* Note: any extra u16s go here, then u8s */
 } apf_context;
 
 FUNC(int apf_internal_do_transmit_buffer(apf_context* ctx, u32 pkt_len, u8 dscp)) {
@@ -1004,6 +1017,10 @@ static int do_apf_run(apf_context* ctx) {
                 if (jmp) ctx->pc += jump_offs;
                 break;
               }
+              case EXCEPTIONBUFFER_EXT_OPCODE: {
+                ctx->except_buf_sz = decode_be16(ctx);
+                break;
+              }
               default:  /* Unknown extended opcode */
                 return EXCEPTION;  /* Bail out */
             }
@@ -1083,6 +1100,7 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
         apf_context apf_ctx = { 0 };
         int ret;
 
+        apf_ctx.ptr_size = sizeof(void*);
         apf_ctx.caller_ctx = ctx;
         apf_ctx.program = (u8*)program;
         apf_ctx.program_len = program_len;
@@ -1100,7 +1118,18 @@ int apf_run(void* ctx, u32* const program, const u32 program_len,
         ret = do_apf_run(&apf_ctx);
         if (apf_ctx.tx_buf) do_discard_buffer(&apf_ctx);
         /* Convert any exceptions internal to the program to just normal 'PASS' */
-        if (ret >= EXCEPTION) ret = PASS;
+        if (ret >= EXCEPTION) {
+            u16 buf_size = apf_ctx.except_buf_sz;
+            if (buf_size >= sizeof(apf_ctx) && apf_ctx.program_len + buf_size <= apf_ctx.ram_len) {
+                u8* buf = apf_ctx.program + apf_ctx.program_len;
+                memcpy(buf, &apf_ctx, sizeof(apf_ctx));
+                buf_size -= sizeof(apf_ctx);
+                buf += sizeof(apf_ctx);
+                if (buf_size > apf_ctx.packet_len) buf_size = apf_ctx.packet_len;
+                memcpy(buf, apf_ctx.packet, buf_size);
+            }
+            ret = PASS;
+        }
         return ret;
     }
 }
