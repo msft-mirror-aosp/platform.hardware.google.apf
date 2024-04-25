@@ -241,7 +241,7 @@ typedef union {
 #define JLT_OPCODE 18   /* Compare less than and branch, e.g. "jlt R0,5,label" */
 #define JSET_OPCODE 19  /* Compare any bits set and branch, e.g. "jset R0,5,label" */
 #define JBSMATCH_OPCODE 20 /* Compare byte sequence [R=0 not] equal, e.g. "jbsne R0,2,label,0x1122" */
-                           /* NOTE: Only APFv6+ implements R=1 'jbseq' version */
+                           /* NOTE: Only APFv6+ implements R=1 'jbseq' version and multi match */
 #define EXT_OPCODE 21   /* Immediate value is one of *_EXT_OPCODE */
 #define LDDW_OPCODE 22  /* Load 4 bytes from data address (register + signed imm): "lddw R0, [5+R1]" */
                         /* LDDW/STDW in APFv6+ *mode* load/store from counter specified in imm. */
@@ -804,21 +804,26 @@ static int do_apf_run(apf_context* ctx) {
           case JBSMATCH_OPCODE: {
             /* Load second immediate field. */
             u32 cmp_imm = decode_imm(ctx, imm_len); /* 2nd imm, at worst 8 bytes past prog_len */
-            const u32 last_packet_offs = ctx->R[0] + cmp_imm - 1;
+            u32 cnt = (cmp_imm >> 11) + 1; /* 1+, up to 32 fits in u16 */
+            u32 len = cmp_imm & 2047; /* 0..2047 */
+            u32 bytes = cnt * len;
+            const u32 last_packet_offs = ctx->R[0] + len - 1;
             Boolean do_jump = !reg_num;
-            /* cmp_imm is size in bytes of data to compare. */
+            /* bytes = cnt * len is size in bytes of data to compare. */
             /* pc is offset of program bytes to compare. */
             /* imm is jump target offset. */
             /* R0 is offset of packet bytes to compare. */
-            if (cmp_imm > 0xFFFF) return EXCEPTION;
-            /* pc < program_len < ram_len < 2GiB, thus pc + cmp_imm cannot wrap */
-            if (!IN_RAM_BOUNDS(ctx->pc + cmp_imm - 1)) return EXCEPTION;
+            if (bytes > 0xFFFF) return EXCEPTION;
+            /* pc < program_len < ram_len < 2GiB, thus pc + bytes cannot wrap */
+            if (!IN_RAM_BOUNDS(ctx->pc + bytes - 1)) return EXCEPTION;
             ASSERT_IN_PACKET_BOUNDS(ctx->R[0]);
             ASSERT_RETURN(last_packet_offs >= ctx->R[0]);
             ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
-            do_jump ^= !memcmp(ctx->program + ctx->pc, ctx->packet + ctx->R[0], cmp_imm);
-            /* skip past comparison bytes */
-            ctx->pc += cmp_imm;
+            while (cnt--) {
+                do_jump ^= !memcmp(ctx->program + ctx->pc, ctx->packet + ctx->R[0], len);
+                /* skip past comparison bytes */
+                ctx->pc += len;
+            }
             if (do_jump) ctx->pc += imm;
             break;
           }
