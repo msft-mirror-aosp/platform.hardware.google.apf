@@ -164,13 +164,13 @@ static int do_apf_run(apf_context* ctx) {
       {  // half indent to avoid needless line length...
 
         const u8 bytecode = ctx->program[ctx->pc++];
-        const u32 opcode = EXTRACT_OPCODE(bytecode);
-        const u32 reg_num = EXTRACT_REGISTER(bytecode);
+        const u8 opcode = EXTRACT_OPCODE(bytecode);
+        const u8 reg_num = EXTRACT_REGISTER(bytecode);
 #define REG (ctx->R[reg_num])
 #define OTHER_REG (ctx->R[reg_num ^ 1])
         // All instructions have immediate fields, so load them now.
-        const u32 len_field = EXTRACT_IMM_LENGTH(bytecode);
-        const u32 imm_len = ((len_field + 1u) >> 2) + len_field; // 0,1,2,3 -> 0,1,2,4
+        const u8 len_field = EXTRACT_IMM_LENGTH(bytecode);
+        const u8 imm_len = ((len_field + 1u) >> 2) + len_field; // 0,1,2,3 -> 0,1,2,4
         u32 pktcopy_src_offset = 0;  // used for various pktdatacopy opcodes
         u32 imm = 0;
         s32 signed_imm = 0;
