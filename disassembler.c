@@ -32,6 +32,7 @@ typedef enum { false, true } bool;
 char print_buf[1024];
 char* buf_ptr;
 int buf_remain;
+bool v6_mode = false;
 
 __attribute__ ((format (printf, 1, 2) ))
 static void bprintf(const char* format, ...) {
@@ -138,7 +139,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 print_opcode("drop");
             }
             if (imm > 0) {
-                bprintf(" %d", imm);
+                bprintf("counter=%d", imm);
             }
             break;
         case LDB_OPCODE:
@@ -162,6 +163,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 PRINT_OPCODE();
                 print_jump_target(*ptr2pc + imm, program_len);
             } else {
+                v6_mode = true;
                 print_opcode("data");
                 bprintf("%d, ", imm);
                 uint32_t len = imm;
@@ -194,13 +196,26 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 print_opcode("jbseq");
             }
             bprintf("r0, ");
-            uint32_t cmp_imm = DECODE_IMM(1 << (len_field - 1));
-            bprintf("0x%x, ", cmp_imm);
-            print_jump_target(*ptr2pc + imm + cmp_imm, program_len);
+            const uint32_t cmp_imm = DECODE_IMM(1 << (len_field - 1));
+            const uint32_t cnt = (cmp_imm >> 11) + 1; // 1+, up to 32 fits in u16
+            const uint32_t len = cmp_imm & 2047; // 0..2047
+            bprintf("0x%x, ", len);
+            print_jump_target(*ptr2pc + imm + cnt * len, program_len);
             bprintf(", ");
-            while (cmp_imm--) {
-                uint8_t byte = program[(*ptr2pc)++];
-                bprintf("%02x", byte);
+            if (cnt > 1) {
+                bprintf("{ ");
+            }
+            for (uint32_t i = 0; i < cnt; ++i) {
+                for (uint32_t j = 0; j < len; ++j) {
+                    uint8_t byte = program[(*ptr2pc)++];
+                    bprintf("%02x", byte);
+                }
+                if (i != cnt - 1) {
+                    bprintf(", ");
+                }
+            }
+            if (cnt > 1) {
+                bprintf(" }");
             }
             break;
         }
@@ -348,6 +363,32 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                     }
                     break;
                 }
+                case JONEOF_EXT_OPCODE: {
+                    const uint32_t imm_len = 1 << (len_field - 1);
+                    uint32_t jump_offs = DECODE_IMM(imm_len);
+                    uint8_t imm3 = DECODE_IMM(1);
+                    bool jmp = imm3 & 1;
+                    uint8_t len = ((imm3 >> 1) & 3) + 1;
+                    uint8_t cnt = (imm3 >> 3) + 2;
+                    if (jmp) {
+                        print_opcode("jnoneof");
+                    } else {
+                        print_opcode("joneof");
+                    }
+                    bprintf("r%d, ", reg_num);
+                    print_jump_target(*ptr2pc + jump_offs + cnt * len, program_len);
+                    bprintf(", { ");
+                    while (cnt--) {
+                        uint32_t v = DECODE_IMM(len);
+                        if (cnt) {
+                            bprintf("%d, ", v);
+                        } else {
+                            bprintf("%d ", v);
+                        }
+                    }
+                    bprintf("}");
+                    break;
+                }
                 default:
                     bprintf("unknown_ext %u", imm);
                     break;
@@ -356,12 +397,20 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
         case LDDW_OPCODE:
         case STDW_OPCODE:
             PRINT_OPCODE();
-            if (signed_imm > 0) {
-                bprintf("r%u, [r%u+%d]", reg_num, reg_num ^ 1, signed_imm);
-            } else if (signed_imm < 0) {
-                bprintf("r%u, [r%u-%d]", reg_num, reg_num ^ 1, -signed_imm);
+            if (v6_mode) {
+                if (opcode == LDDW_OPCODE) {
+                    bprintf("r%u, counter=%d", reg_num, imm);
+                } else {
+                    bprintf("counter=%d, r%u", imm, reg_num);
+                }
             } else {
-                bprintf("r%u, [r%u]", reg_num, reg_num ^ 1);
+                if (signed_imm > 0) {
+                    bprintf("r%u, [r%u+%d]", reg_num, reg_num ^ 1, signed_imm);
+                } else if (signed_imm < 0) {
+                    bprintf("r%u, [r%u-%d]", reg_num, reg_num ^ 1, -signed_imm);
+                } else {
+                    bprintf("r%u, [r%u]", reg_num, reg_num ^ 1);
+                }
             }
             break;
         case WRITE_OPCODE: {
