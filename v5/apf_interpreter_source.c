@@ -289,6 +289,7 @@ static int do_apf_run(apf_context* ctx) {
             // pc < program_len < ram_len < 2GiB, thus pc + bytes cannot wrap
             if (!IN_RAM_BOUNDS(ctx->pc + bytes - 1)) return EXCEPTION;
             ASSERT_IN_PACKET_BOUNDS(ctx->R[0]);
+            // Note: this will return EXCEPTION (due to wrap) if imm_len (ie. len) is 0
             ASSERT_RETURN(last_packet_offs >= ctx->R[0]);
             ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
             while (cnt--) {
