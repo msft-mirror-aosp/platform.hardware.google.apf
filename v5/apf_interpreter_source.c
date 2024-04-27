@@ -280,7 +280,7 @@ static int do_apf_run(apf_context* ctx) {
             u32 len = cmp_imm & 2047; // 0..2047
             u32 bytes = cnt * len;
             const u32 last_packet_offs = ctx->R[0] + len - 1;
-            bool do_jump = !reg_num;
+            bool matched = false;
             // bytes = cnt * len is size in bytes of data to compare.
             // pc is offset of program bytes to compare.
             // imm is jump target offset.
@@ -293,11 +293,11 @@ static int do_apf_run(apf_context* ctx) {
             ASSERT_RETURN(last_packet_offs >= ctx->R[0]);
             ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
             while (cnt--) {
-                do_jump ^= !memcmp(ctx->program + ctx->pc, ctx->packet + ctx->R[0], len);
+                matched |= !memcmp(ctx->program + ctx->pc, ctx->packet + ctx->R[0], len);
                 // skip past comparison bytes
                 ctx->pc += len;
             }
-            if (do_jump) ctx->pc += imm;
+            if (matched ^ !reg_num) ctx->pc += imm;
             break;
           }
           // There is a difference in APFv4 and APFv6 arithmetic behaviour!
