@@ -389,6 +389,12 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                     bprintf("}");
                     break;
                 }
+                case EXCEPTIONBUFFER_EXT_OPCODE: {
+                    uint32_t buf_size = DECODE_IMM(2);
+                    print_opcode("debugbuf");
+                    bprintf("size=%d", buf_size);
+                    break;
+                }
                 default:
                     bprintf("unknown_ext %u", imm);
                     break;
