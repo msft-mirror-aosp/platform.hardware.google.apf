@@ -117,6 +117,11 @@ static u32 decode_imm(apf_context* ctx, u32 length) {
     return v;
 }
 
+// Warning: 'ofs' should be validated by caller!
+static u8 read_packet_u8(apf_context* ctx, u32 ofs) {
+    return ctx->packet[ofs];
+}
+
 static int do_apf_run(apf_context* ctx) {
 // Is offset within ram bounds?
 #define IN_RAM_BOUNDS(p) (ENFORCE_UNSIGNED(p) && (p) < ctx->ram_len)
@@ -149,8 +154,9 @@ static int do_apf_run(apf_context* ctx) {
 
     // Only populate if packet long enough, and IP version is IPv4.
     // Note: this doesn't actually check the ethertype...
-    if ((ctx->packet_len >= ETH_HLEN + IPV4_HLEN) && ((ctx->packet[ETH_HLEN] & 0xf0) == 0x40)) {
-        ctx->mem.named.ipv4_header_size = (ctx->packet[ETH_HLEN] & 15) * 4;
+    if ((ctx->packet_len >= ETH_HLEN + IPV4_HLEN)
+        && ((read_packet_u8(ctx, ETH_HLEN) & 0xf0) == 0x40)) {
+        ctx->mem.named.ipv4_header_size = (read_packet_u8(ctx, ETH_HLEN) & 15) * 4;
     }
 
 // Is access to offset |p| length |size| within output buffer bounds?
@@ -237,7 +243,7 @@ static int do_apf_run(apf_context* ctx) {
                 // Catch overflow/wrap-around.
                 ASSERT_RETURN(end_offs >= offs);
                 ASSERT_IN_PACKET_BOUNDS(end_offs);
-                while (load_size--) val = (val << 8) | ctx->packet[offs++];
+                while (load_size--) val = (val << 8) | read_packet_u8(ctx, offs++);
                 REG = val;
             }
             break;
