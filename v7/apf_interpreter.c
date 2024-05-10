@@ -643,21 +643,21 @@ static int do_discard_buffer(apf_context* ctx) {
     return apf_internal_do_transmit_buffer(ctx, 0 /* pkt_len */, 0 /* dscp */);
 }
 
+#define DECODE_U8() (ctx->program[ctx->pc++])
+
+static u16 decode_be16(apf_context* ctx) {
+    u16 v = DECODE_U8();
+    v <<= 8;
+    v |= DECODE_U8();
+    return v;
+}
+
 /* Decode an immediate, lengths [0..4] all work, does not do range checking. */
 /* But note that program is at least 20 bytes shorter than ram, so first few */
 /* immediates can always be safely decoded without exceeding ram buffer. */
 static u32 decode_imm(apf_context* ctx, u32 length) {
     u32 i, v = 0;
-    for (i = 0; i < length; ++i) v = (v << 8) | ctx->program[ctx->pc++];
-    return v;
-}
-
-#define DECODE_U8() (ctx->program[ctx->pc++])
-
-static u16 decode_be16(apf_context* ctx) {
-    u16 v = ctx->program[ctx->pc++];
-    v <<= 8;
-    v |= ctx->program[ctx->pc++];
+    for (i = 0; i < length; ++i) v = (v << 8) | DECODE_U8();
     return v;
 }
 
@@ -714,7 +714,7 @@ static int do_apf_run(apf_context* ctx) {
 
       {  /* half indent to avoid needless line length... */
 
-        const u8 bytecode = ctx->program[ctx->pc++];
+        const u8 bytecode = DECODE_U8();
         const u8 opcode = EXTRACT_OPCODE(bytecode);
         const u8 reg_num = EXTRACT_REGISTER(bytecode);
 #define REG (ctx->R[reg_num])
