@@ -37,6 +37,6 @@ int main(void) {
   }
 
   for (uint32_t pc = 0; pc < program_len;) {
-      pc = apf_disassemble(program, program_len, pc);
+      printf("%s\n", apf_disassemble(program, program_len, &pc));
   }
 }
