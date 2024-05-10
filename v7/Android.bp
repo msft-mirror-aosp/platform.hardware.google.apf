@@ -37,7 +37,7 @@ cc_defaults {
 }
 
 cc_library_static {
-    name: "libapf_v5",
+    name: "libapf_v7",
     defaults: ["apfv7_defaults"],
     srcs: [
         "apf_interpreter.c",
