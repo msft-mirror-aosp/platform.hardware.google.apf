@@ -75,6 +75,7 @@ static const char* opcode_names [] = {
     [LDDW_OPCODE] = "lddw",
     [STDW_OPCODE] = "stdw",
     [WRITE_OPCODE] = "write",
+    [JNSET_OPCODE] = "jnset",
 };
 
 static void print_jump_target(uint32_t target, uint32_t program_len) {
@@ -174,7 +175,8 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
         case JNE_OPCODE:
         case JGT_OPCODE:
         case JLT_OPCODE:
-        case JSET_OPCODE: {
+        case JSET_OPCODE:
+        case JNSET_OPCODE: {
             PRINT_OPCODE();
             bprintf("r0, ");
             // Load second immediate field.
