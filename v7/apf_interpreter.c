@@ -266,6 +266,8 @@ typedef union {
  */
 #define PKTDATACOPY_OPCODE 25
 
+#define JNSET_OPCODE 26 /* JSET with reverse condition (jump if no bits set) */
+
 /* ---------------------------------------------------------------------------------------------- */
 
 /* Extended opcodes. */
@@ -806,7 +808,8 @@ static int do_apf_run(apf_context* ctx) {
           case JNE_OPCODE:
           case JGT_OPCODE:
           case JLT_OPCODE:
-          case JSET_OPCODE: {
+          case JSET_OPCODE:
+          case JNSET_OPCODE: {
             u32 cmp_imm = 0;
             /* Load second immediate field. */
             if (reg_num == 1) {
@@ -815,11 +818,12 @@ static int do_apf_run(apf_context* ctx) {
                 cmp_imm = decode_imm(ctx, imm_len); /* 2nd imm, at worst 8 bytes past prog_len */
             }
             switch (opcode) {
-              case JEQ_OPCODE:  if (ctx->R[0] == cmp_imm) ctx->pc += imm; break;
-              case JNE_OPCODE:  if (ctx->R[0] != cmp_imm) ctx->pc += imm; break;
-              case JGT_OPCODE:  if (ctx->R[0] >  cmp_imm) ctx->pc += imm; break;
-              case JLT_OPCODE:  if (ctx->R[0] <  cmp_imm) ctx->pc += imm; break;
-              case JSET_OPCODE: if (ctx->R[0] &  cmp_imm) ctx->pc += imm; break;
+              case JEQ_OPCODE:   if (  ctx->R[0] == cmp_imm ) ctx->pc += imm; break;
+              case JNE_OPCODE:   if (  ctx->R[0] != cmp_imm ) ctx->pc += imm; break;
+              case JGT_OPCODE:   if (  ctx->R[0] >  cmp_imm ) ctx->pc += imm; break;
+              case JLT_OPCODE:   if (  ctx->R[0] <  cmp_imm ) ctx->pc += imm; break;
+              case JSET_OPCODE:  if (  ctx->R[0] &  cmp_imm ) ctx->pc += imm; break;
+              case JNSET_OPCODE: if (!(ctx->R[0] &  cmp_imm)) ctx->pc += imm; break;
             }
             break;
           }
