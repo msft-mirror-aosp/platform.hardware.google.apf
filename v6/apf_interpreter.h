@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef APF_INTERPRETER_V5_H_
-#define APF_INTERPRETER_V5_H_
+#ifndef APF_INTERPRETER_V6_H_
+#define APF_INTERPRETER_V6_H_
 
 #include <stdint.h>
 
@@ -127,8 +127,18 @@ int apf_transmit_buffer(void* ctx, uint8_t* ptr, uint32_t len, uint8_t dscp);
  * @param filter_age_16384ths - the number of 1/16384 seconds since the filter
  *                     was programmed.
  *
- * @return non-zero if packet should be passed,
- *         zero if packet should be dropped.
+ * @return zero if packet should be dropped,
+ *         non-zero if packet should be passed, specifically:
+ *         - 1 on normal apf program execution,
+ *         - 2 on exceptional circumstances (caused by bad firmware integration),
+ *           these include:
+ *             - program pointer which is not aligned to 4 bytes
+ *             - ram_len which is not a multiple of 4 bytes
+ *             - excessively large (>= 2GiB) program_len or ram_len
+ *             - packet pointer which is a null pointer
+ *             - packet_len shorter than ETH_HLEN (14)
+ *           As such, you may want to log a firmware exception if 2 is ever returned...
+ *
  *
  * NOTE: How to calculate filter_age_16384ths:
  *
@@ -162,4 +172,4 @@ int apf_run(void* ctx, uint32_t* const program, const uint32_t program_len,
 }
 #endif
 
-#endif  /* APF_INTERPRETER_V5_H_ */
+#endif  /* APF_INTERPRETER_V6_H_ */
