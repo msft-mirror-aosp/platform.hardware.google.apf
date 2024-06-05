@@ -1,5 +1,5 @@
 /*
- * Copyright 2023, The Android Open Source Project
+ * Copyright 2018, The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -124,10 +124,6 @@
 // Number of temporary memory slots, see ldm/stm instructions.
 #define MEMORY_ITEMS 16
 // Upon program execution, some temporary memory slots are prefilled:
-
-// Offset inside the output buffer where the next byte of output packet should
-// be written to.
-#define MEMORY_OFFSET_OUTPUT_BUFFER_OFFSET 10
 #define MEMORY_OFFSET_PROGRAM_SIZE 11     // Size of program (in bytes)
 #define MEMORY_OFFSET_DATA_SIZE 12        // Total size of program + data
 #define MEMORY_OFFSET_IPV4_HEADER_SIZE 13 // 4*([APF_FRAME_HEADER_SIZE]&15)
@@ -146,7 +142,7 @@
 #define DIV_OPCODE 9    // Divide, e.g. "div R0,5"
 #define AND_OPCODE 10   // And, e.g. "and R0,5"
 #define OR_OPCODE 11    // Or, e.g. "or R0,5"
-#define SH_OPCODE 12    // Left shift, e.g. "sh R0, 5" or "sh R0, -5" (shifts right)
+#define SH_OPCODE 12    // Left shift, e.g, "sh R0, 5" or "sh R0, -5" (shifts right)
 #define LI_OPCODE 13    // Load signed immediate, e.g. "li R0,5"
 #define JMP_OPCODE 14   // Unconditional jump, e.g. "jmp label"
 #define JEQ_OPCODE 15   // Compare equal and branch, e.g. "jeq R0,5,label"
@@ -158,12 +154,6 @@
 #define EXT_OPCODE 21   // Immediate value is one of *_EXT_OPCODE
 #define LDDW_OPCODE 22  // Load 4 bytes from data address (register + simm): "lddw R0, [5+R1]"
 #define STDW_OPCODE 23  // Store 4 bytes to data address (register + simm): "stdw R0, [5+R1]"
-#define WRITE_OPCODE 24 // Write 1, 2 or 4 bytes imm to the output buffer, e.g. "WRITE 5"
-// Copy the data from input packet or APF data region to output buffer. Register bit is
-// used to specify the source of data copy: R=0 means copy from packet, R=1 means copy
-// from APF data region. The source offset is encoded in the first imm and the copy length
-// is encoded in the second imm. "e.g. MEMCOPY(R=0), 5, 5"
-#define MEMCOPY_OPCODE 25
 
 // Extended opcodes. These all have an opcode of EXT_OPCODE
 // and specify the actual opcode in the immediate field.
@@ -175,21 +165,6 @@
 #define NEG_EXT_OPCODE 33  // Negate, e.g. "neg R0"
 #define SWAP_EXT_OPCODE 34 // Swap, e.g. "swap R0,R1"
 #define MOV_EXT_OPCODE 35  // Move, e.g. "move R0,R1"
-#define ALLOC_EXT_OPCODE 36 // Allocate buffer, "e.g. ALLOC R0"
-#define TRANS_EXT_OPCODE 37 // Transmit buffer, "e.g. TRANS R0"
-#define EWRITE1_EXT_OPCODE 38 // Write 1 byte from register to the output buffer, e.g. "EWRITE1 R0"
-#define EWRITE2_EXT_OPCODE 39 // Write 2 bytes from register to the output buffer, e.g. "EWRITE2 R0"
-#define EWRITE4_EXT_OPCODE 40 // Write 4 bytes from register to the output buffer, e.g. "EWRITE4 R0"
-// Copy the data from input packet to output buffer. The source offset is encoded as [Rx + second imm].
-// The copy length is encoded in the third imm. "e.g. EPKTCOPY [R0 + 5], 5"
-#define EPKTCOPY 41
-// Copy the data from APF data region to output buffer. The source offset is encoded as [Rx + second imm].
-// The copy length is encoded in the third imm. "e.g. EDATACOPY [R0 + 5], 5"
-#define EDATACOPY 42
-//  It is executed as a jump, it tells how many bytes of the program regions
-//  are used to store the data and followed by the actual data bytes.
-// "e.g. data 5, abcde"
-#define DATA_EXT_OPCODE 43
 
 #define EXTRACT_OPCODE(i) (((i) >> 3) & 31)
 #define EXTRACT_REGISTER(i) ((i) & 1)

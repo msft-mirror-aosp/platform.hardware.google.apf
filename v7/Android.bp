@@ -19,12 +19,13 @@ package {
 }
 
 cc_defaults {
-    name: "apfv5_defaults",
+    name: "apfv7_defaults",
 
     cflags: [
         "-Wall",
         "-Werror",
         "-Werror=implicit-fallthrough",
+        "-Werror=missing-prototypes",
         "-Werror=strict-prototypes",
         "-Wnullable-to-nonnull-conversion",
         "-Wsign-compare",
@@ -36,11 +37,37 @@ cc_defaults {
 }
 
 cc_library_static {
-    name: "libapf_v5",
-    defaults: ["apfv5_defaults"],
+    name: "libapf_v7",
+    defaults: ["apfv7_defaults"],
     srcs: [
         "apf_interpreter.c",
-        "test_buf_allocator.c"
+        "test_buf_allocator.c",
     ],
     sdk_version: "24",
+}
+
+sh_test_host {
+    name: "apf_assemble_test",
+    src: "apf_interpreter_assemble.sh",
+    filename: "apf_assemble_test.sh",
+    test_config: "apf_assemble_test.xml",
+    data: [
+        // the sources:
+        "apf_*.h",
+        "apf.h",
+        "apf_interpreter_source.c",
+        // the assembled output:
+        "apf_interpreter.c",
+    ],
+    target: {
+        darwin: {
+            enabled: false,
+        },
+        windows: {
+            enabled: false,
+        },
+    },
+    test_options: {
+        unit_test: true,
+    },
 }
