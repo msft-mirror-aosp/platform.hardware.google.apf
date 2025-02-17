@@ -28,7 +28,7 @@
 #include <string.h>
 
 #include "disassembler.h"
-#include "apf_interpreter.h"
+#include "v4/apf_interpreter.h"
 #include "next/apf_interpreter.h"
 #include "next/test_buf_allocator.h"
 
