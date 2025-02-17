@@ -19,8 +19,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#include "v7/apf_defs.h"
-#include "v7/apf.h"
+#include "next/apf_defs.h"
+#include "next/apf.h"
 #include "disassembler.h"
 
 // If "c" is of a signed type, generate a compile warning that gets promoted to an error.
