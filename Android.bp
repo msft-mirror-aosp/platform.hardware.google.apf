@@ -54,7 +54,7 @@ cc_library_static {
     name: "libapfbuf",
     defaults: ["apf_defaults"],
     srcs: [
-        "v7/test_buf_allocator.c",
+        "next/test_buf_allocator.c",
     ],
     sdk_version: "24",
 }
@@ -78,8 +78,8 @@ cc_binary_host {
         "apf_run.c",
         "apf_interpreter.c",
         "disassembler.c",
-        "v7/apf_interpreter.c",
-        "v7/test_buf_allocator.c",
+        "next/apf_interpreter.c",
+        "next/test_buf_allocator.c",
     ],
     cflags: [
         "-DAPF_TRACE_HOOK=apf_trace_hook",
