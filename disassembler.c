@@ -353,10 +353,13 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                     }
                     while (*ptr2pc < end) {
                         uint8_t byte = program[(*ptr2pc)++];
+                        // value == 0xff is a wildcard that consumes the whole label.
                         // values < 0x40 could be lengths, but - and 0..9 are in practice usually
                         // too long to be lengths so print them as characters. All other chars < 0x40
                         // are not valid in dns character.
-                        if (byte == '-' || (byte >= '0' && byte <= '9') || byte >= 0x40) {
+                        if (byte == 0xff) {
+                            bprintf("(*)");
+                        } else if (byte == '-' || (byte >= '0' && byte <= '9') || byte >= 0x40) {
                             bprintf("%c", byte);
                         } else {
                             bprintf("(%d)", byte);
