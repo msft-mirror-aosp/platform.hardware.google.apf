@@ -37,6 +37,7 @@ int main(void) {
   }
 
   for (uint32_t pc = 0; pc < program_len + 2;) {
-      printf("%s\n", apf_disassemble(program, program_len, &pc));
+      const disas_ret ret = apf_disassemble(program, program_len, &pc);
+      printf("%s%s\n", ret.prefix, ret.content);
   }
 }
