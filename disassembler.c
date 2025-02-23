@@ -29,7 +29,7 @@
 #define ENFORCE_UNSIGNED(c) ((c)==(uint32_t)(c))
 
 char prefix_buf[16];
-char print_buf[1024];
+char print_buf[8196];
 char* buf_ptr;
 int buf_remain;
 bool v6_mode = false;
