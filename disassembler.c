@@ -28,7 +28,8 @@
 // superfluous ">= 0" with unsigned expressions generates compile warnings.
 #define ENFORCE_UNSIGNED(c) ((c)==(uint32_t)(c))
 
-char print_buf[1024];
+char prefix_buf[16];
+char print_buf[8196];
 char* buf_ptr;
 int buf_remain;
 bool v6_mode = false;
@@ -87,26 +88,42 @@ static void print_jump_target(uint32_t target, uint32_t program_len) {
     }
 }
 
-const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t* const ptr2pc) {
+disas_ret apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t* const ptr2pc) {
     buf_ptr = print_buf;
     buf_remain = sizeof(print_buf);
     if (*ptr2pc > program_len + 1) {
+        snprintf(prefix_buf, sizeof(prefix_buf), "(%4u) ", 0);
         bprintf("pc is overflow: pc %d, program_len: %d", *ptr2pc, program_len);
-        return print_buf;
+        disas_ret ret = {
+            .prefix = prefix_buf,
+            .content = print_buf
+        };
+        return ret;
     }
+    uint32_t prev_pc = *ptr2pc;
 
-    bprintf("%8u: ", *ptr2pc);
+    bprintf("%4u: ", *ptr2pc);
 
     if (*ptr2pc == program_len) {
+        snprintf(prefix_buf, sizeof(prefix_buf), "(%4u) ", 0);
         bprintf("PASS");
         ++(*ptr2pc);
-        return print_buf;
+        disas_ret ret = {
+            .prefix = prefix_buf,
+            .content = print_buf
+        };
+        return ret;
     }
 
     if (*ptr2pc == program_len + 1) {
+        snprintf(prefix_buf, sizeof(prefix_buf), "(%4u) ", 0);
         bprintf("DROP");
         ++(*ptr2pc);
-        return print_buf;
+        disas_ret ret = {
+            .prefix = prefix_buf,
+            .content = print_buf
+        };
+        return ret;
     }
 
     const uint8_t bytecode = program[(*ptr2pc)++];
@@ -200,7 +217,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             const uint32_t cmp_imm = DECODE_IMM(1 << (len_field - 1));
             const uint32_t cnt = (cmp_imm >> 11) + 1; // 1+, up to 32 fits in u16
             const uint32_t len = cmp_imm & 2047; // 0..2047
-            bprintf("0x%x, ", len);
+            bprintf("(%u), ", len);
             print_jump_target(*ptr2pc + imm + cnt * len, program_len);
             bprintf(", ");
             if (cnt > 1) {
@@ -216,7 +233,7 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                 }
             }
             if (cnt > 1) {
-                bprintf(" }");
+                bprintf(" }[%d]", cnt);
             }
             break;
         }
@@ -311,9 +328,9 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
                     }
                     if (imm == EPKTDATACOPYIMM_EXT_OPCODE) {
                         uint32_t len = DECODE_IMM(1);
-                        bprintf(" src=r0, len=%d", len);
+                        bprintf("src=r0, len=%d", len);
                     } else {
-                        bprintf(" src=r0, len=r1");
+                        bprintf("src=r0, len=r1");
                     }
 
                     break;
@@ -438,14 +455,19 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             break;
         }
         case PKTDATACOPY_OPCODE: {
-            if (reg_num == 0) {
-                print_opcode("pktcopy");
-            } else {
-                print_opcode("datacopy");
-            }
             uint32_t src_offs = imm;
             uint32_t copy_len = DECODE_IMM(1);
-            bprintf("src=%d, len=%d", src_offs, copy_len);
+            if (reg_num == 0) {
+                print_opcode("pktcopy");
+                bprintf("src=%d, len=%d", src_offs, copy_len);
+            } else {
+                print_opcode("datacopy");
+                bprintf("src=%d, (%d)", src_offs, copy_len);
+                for (uint32_t i = 0; i < copy_len; ++i) {
+                    uint8_t byte = program[src_offs + i];
+                    bprintf("%02x", byte);
+                }
+            }
             break;
         }
         // Unknown opcode
@@ -453,5 +475,10 @@ const char* apf_disassemble(const uint8_t* program, uint32_t program_len, uint32
             bprintf("unknown %u", opcode);
             break;
     }
-    return print_buf;
+    snprintf(prefix_buf, sizeof(prefix_buf), "(%4u) ", (*ptr2pc - prev_pc));
+    disas_ret ret = {
+        .prefix = prefix_buf,
+        .content = print_buf
+    };
+    return ret;
 }
