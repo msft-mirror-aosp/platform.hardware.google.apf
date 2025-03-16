@@ -433,14 +433,21 @@ static int do_apf_run(apf_context* ctx) {
                 ctx->mem.named.tx_buf_offset = dst_offs;
                 break;
               }
-              case JDNSQMATCH_EXT_OPCODE:       // 43
-              case JDNSAMATCH_EXT_OPCODE:       // 44
-              case JDNSQMATCHSAFE_EXT_OPCODE:   // 45
-              case JDNSAMATCHSAFE_EXT_OPCODE: { // 46
+              case JDNSQMATCH_EXT_OPCODE:        // 43
+              case JDNSAMATCH_EXT_OPCODE:        // 44
+              case JDNSQMATCHSAFE_EXT_OPCODE:    // 45
+              case JDNSAMATCHSAFE_EXT_OPCODE:    // 46
+              case JDNSQMATCH2_EXT_OPCODE:       // 49
+              case JDNSQMATCHSAFE2_EXT_OPCODE: { // 51
                 u32 jump_offs = decode_imm(ctx, imm_len); // 2nd imm, at worst 8 B past prog_len
-                int qtype = -1;
-                if (imm & 1) { // JDNSQMATCH & JDNSQMATCHSAFE are *odd* extended opcodes
-                    qtype = DECODE_U8();  // 3rd imm, at worst 9 bytes past prog_len
+                int qtype1 = -1;
+                int qtype2 = -1;
+                if (imm & 1) { // JDNSQMATCH[2] & JDNSQMATCHSAFE[2] are *odd* extended opcodes
+                    qtype1 = DECODE_U8();  // 3rd imm, at worst 9 bytes past prog_len
+                    qtype2 = qtype1;
+                }
+                if (imm > JDNSAMATCHSAFE_EXT_OPCODE) {
+                    qtype2 = DECODE_U8();  // 4th imm, at worst 10 bytes past prog_len
                 }
                 {
                     u32 udp_payload_offset = ctx->R[0];
@@ -448,11 +455,13 @@ static int do_apf_run(apf_context* ctx) {
                                                               ctx->program + ctx->program_len,
                                                               ctx->packet + udp_payload_offset,
                                                               ctx->packet_len - udp_payload_offset,
-                                                              qtype);
+                                                              qtype1,
+                                                              qtype2);
                     if (match_rst == error_program) return EXCEPTION;
                     if (match_rst == error_packet) {
                         counter[-5]++; // increment error dns packet counter
-                        return (imm >= JDNSQMATCHSAFE_EXT_OPCODE) ? PASS : DROP;
+                        return (imm >= JDNSQMATCHSAFE_EXT_OPCODE
+                                && imm != JDNSQMATCH2_EXT_OPCODE) ? PASS : DROP;
                     }
                     while (ctx->pc + 1 < ctx->program_len &&
                            (ctx->program[ctx->pc] || ctx->program[ctx->pc + 1])) {

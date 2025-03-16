@@ -287,6 +287,22 @@ typedef union {
  */
 #define JDNSAMATCH_EXT_OPCODE 44
 #define JDNSAMATCHSAFE_EXT_OPCODE 46
+/* Jumps if the UDP payload content (starting at R0) does [not] match one
+ * of the specified QNAMEs in question records, applying case insensitivity.
+ * The qtypes in the input packet can match either of the two supplied qtypes.
+ * SAFE version PASSES corrupt packets, while the other one DROPS.
+ * R=0/1 meaning 'does not match'/'matches'
+ * R0: Offset to UDP payload content
+ * imm1: Extended opcode
+ * imm2: Jump label offset
+ * imm3(u8): Question type1 (PTR/SRV/TXT/A/AAAA)
+ * imm4(u8): Question type2 (PTR/SRV/TXT/A/AAAA)
+ * imm5(bytes): null terminated list of null terminated LV-encoded QNAMEs
+ * e.g.: "jdnsqeq2 R0,label,A,AAAA,\002aa\005local\0\0",
+ *       "jdnsqne2 R0,label,A,AAAA,\002aa\005local\0\0"
+ */
+#define JDNSQMATCH2_EXT_OPCODE 49
+#define JDNSQMATCHSAFE2_EXT_OPCODE 51
 
 /* Jump if register is [not] one of the list of values
  * R bit - specifies the register (R0/R1) to test

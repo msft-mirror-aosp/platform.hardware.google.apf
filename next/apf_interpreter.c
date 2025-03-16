@@ -343,6 +343,22 @@ typedef union {
  */
 #define JDNSAMATCH_EXT_OPCODE 44
 #define JDNSAMATCHSAFE_EXT_OPCODE 46
+/* Jumps if the UDP payload content (starting at R0) does [not] match one
+ * of the specified QNAMEs in question records, applying case insensitivity.
+ * The qtypes in the input packet can match either of the two supplied qtypes.
+ * SAFE version PASSES corrupt packets, while the other one DROPS.
+ * R=0/1 meaning 'does not match'/'matches'
+ * R0: Offset to UDP payload content
+ * imm1: Extended opcode
+ * imm2: Jump label offset
+ * imm3(u8): Question type1 (PTR/SRV/TXT/A/AAAA)
+ * imm4(u8): Question type2 (PTR/SRV/TXT/A/AAAA)
+ * imm5(bytes): null terminated list of null terminated LV-encoded QNAMEs
+ * e.g.: "jdnsqeq2 R0,label,A,AAAA,\002aa\005local\0\0",
+ *       "jdnsqne2 R0,label,A,AAAA,\002aa\005local\0\0"
+ */
+#define JDNSQMATCH2_EXT_OPCODE 49
+#define JDNSQMATCHSAFE2_EXT_OPCODE 51
 
 /* Jump if register is [not] one of the list of values
  * R bit - specifies the register (R0/R1) to test
@@ -454,14 +470,16 @@ FUNC(match_result_type apf_internal_match_single_name(const u8* needle,
 
 /**
  * Check if DNS packet contains any of the target names with the provided
- * question_type.
+ * question_types.
  *
  * @param needles - non-NULL - pointer to DNS encoded target nameS to match against.
  *   example: [3]foo[3]com[0][3]bar[3]net[0][0]  -- note ends with an extra NULL byte.
  * @param needle_bound - non-NULL - points at first invalid byte past needles.
  * @param udp - non-NULL - pointer to the start of the UDP payload (DNS header).
  * @param udp_len - length of the UDP payload.
- * @param question_type - question type to match against or -1 to match answers.
+ * @param question_type1 - question type to match against or -1 to match answers.
+ *                         If question_type1 is -1, we won't check question_type2.
+ * @param question_type2 - question type to match against or -1 to match answers.
  *
  * @return 1 if matched, 0 if not matched, -1 if error in packet, -2 if error in program.
  */
@@ -469,7 +487,8 @@ FUNC(match_result_type apf_internal_match_names(const u8* needles,
                               const u8* const needle_bound,
                               const u8* const udp,
                               const u32 udp_len,
-                              const int question_type)) {
+                              const int question_type1,
+                              const int question_type2)) {
     u32 num_questions, num_answers;
     if (udp_len < 12) return error_packet;  /* lack of dns header */
 
@@ -490,12 +509,13 @@ FUNC(match_result_type apf_internal_match_names(const u8* needles,
             if (ofs + 2 > udp_len) return error_packet;
             qtype = (int)read_be16(udp + ofs);
             ofs += 4; /* skip be16 qtype & qclass */
-            if (question_type == -1) continue;
+            if (question_type1 == -1) continue;
             if (m == nomatch) continue;
-            if (qtype == 0xFF /* QTYPE_ANY */ || qtype == question_type) return match;
+            if (qtype == 0xFF /* QTYPE_ANY */ || qtype == question_type1 || qtype == question_type2)
+              return match;
         }
         /* match answers */
-        if (question_type == -1) for (i = 0; i < num_answers; ++i) {
+        if (question_type1 == -1) for (i = 0; i < num_answers; ++i) {
             match_result_type m = apf_internal_match_single_name(needles, needle_bound, udp, udp_len, &ofs);
             if (m < nomatch) return m;
             ofs += 8; /* skip be16 type, class & be32 ttl */
@@ -979,14 +999,21 @@ static int do_apf_run(apf_context* ctx) {
                 ctx->mem.named.tx_buf_offset = dst_offs;
                 break;
               }
-              case JDNSQMATCH_EXT_OPCODE:       /* 43 */
-              case JDNSAMATCH_EXT_OPCODE:       /* 44 */
-              case JDNSQMATCHSAFE_EXT_OPCODE:   /* 45 */
-              case JDNSAMATCHSAFE_EXT_OPCODE: { /* 46 */
+              case JDNSQMATCH_EXT_OPCODE:        /* 43 */
+              case JDNSAMATCH_EXT_OPCODE:        /* 44 */
+              case JDNSQMATCHSAFE_EXT_OPCODE:    /* 45 */
+              case JDNSAMATCHSAFE_EXT_OPCODE:    /* 46 */
+              case JDNSQMATCH2_EXT_OPCODE:       /* 49 */
+              case JDNSQMATCHSAFE2_EXT_OPCODE: { /* 51 */
                 u32 jump_offs = decode_imm(ctx, imm_len); /* 2nd imm, at worst 8 B past prog_len */
-                int qtype = -1;
-                if (imm & 1) { /* JDNSQMATCH & JDNSQMATCHSAFE are *odd* extended opcodes */
-                    qtype = DECODE_U8();  /* 3rd imm, at worst 9 bytes past prog_len */
+                int qtype1 = -1;
+                int qtype2 = -1;
+                if (imm & 1) { /* JDNSQMATCH[2] & JDNSQMATCHSAFE[2] are *odd* extended opcodes */
+                    qtype1 = DECODE_U8();  /* 3rd imm, at worst 9 bytes past prog_len */
+                    qtype2 = qtype1;
+                }
+                if (imm > JDNSAMATCHSAFE_EXT_OPCODE) {
+                    qtype2 = DECODE_U8();  /* 4th imm, at worst 10 bytes past prog_len */
                 }
                 {
                     u32 udp_payload_offset = ctx->R[0];
@@ -994,11 +1021,13 @@ static int do_apf_run(apf_context* ctx) {
                                                               ctx->program + ctx->program_len,
                                                               ctx->packet + udp_payload_offset,
                                                               ctx->packet_len - udp_payload_offset,
-                                                              qtype);
+                                                              qtype1,
+                                                              qtype2);
                     if (match_rst == error_program) return EXCEPTION;
                     if (match_rst == error_packet) {
                         counter[-5]++; /* increment error dns packet counter */
-                        return (imm >= JDNSQMATCHSAFE_EXT_OPCODE) ? PASS : DROP;
+                        return (imm >= JDNSQMATCHSAFE_EXT_OPCODE
+                                && imm != JDNSQMATCH2_EXT_OPCODE) ? PASS : DROP;
                     }
                     while (ctx->pc + 1 < ctx->program_len &&
                            (ctx->program[ctx->pc] || ctx->program[ctx->pc + 1])) {
