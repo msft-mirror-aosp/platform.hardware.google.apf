@@ -362,16 +362,18 @@ disas_ret apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t
 
                     break;
                 }
-                case JDNSQMATCH_EXT_OPCODE:        // 43
-                case JDNSAMATCH_EXT_OPCODE:        // 44
-                case JDNSQMATCHSAFE_EXT_OPCODE:    // 45
-                case JDNSAMATCHSAFE_EXT_OPCODE:    // 46
-                case JDNSQMATCH2_EXT_OPCODE:       // 49
-                case JDNSQMATCHSAFE2_EXT_OPCODE: { // 51
+                case JDNSAMATCH_EXT_OPCODE:
+                case JDNSQMATCH_EXT_OPCODE:
+                case JDNSQMATCH1_EXT_OPCODE:
+                case JDNSQMATCH2_EXT_OPCODE:
+                case JDNSAMATCHSAFE_EXT_OPCODE:
+                case JDNSQMATCHSAFE_EXT_OPCODE:
+                case JDNSQMATCHSAFE1_EXT_OPCODE:
+                case JDNSQMATCHSAFE2_EXT_OPCODE: {
                     uint32_t offs = DECODE_IMM(1 << (len_field - 1));
                     int qtype1 = -1;
                     int qtype2 = -1;
-                    switch(imm) {
+                    switch (imm) {
                         case JDNSQMATCH_EXT_OPCODE:
                             print_opcode(reg_num ? "jdnsqeq" : "jdnsqne");
                             qtype1 = DECODE_IMM(1);
@@ -394,6 +396,14 @@ disas_ret apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t
                             qtype2 = DECODE_IMM(1);
                             print_opcode(reg_num ? "jdnsqeqsafe2" : "jdnsqnesafe2");
                             break;
+                        case JDNSQMATCH1_EXT_OPCODE:
+                            qtype1 = DECODE_IMM(2);
+                            print_opcode(reg_num ? "jdnsqeq1" : "jdnsqne1");
+                            break;
+                        case JDNSQMATCHSAFE1_EXT_OPCODE:
+                            qtype1 = DECODE_IMM(2);
+                            print_opcode(reg_num ? "jdnsqeqsafe1" : "jdnsqnesafe1");
+                            break;
                         default:
                             bprintf("unknown_ext %u", imm); break;
                     }
@@ -405,7 +415,8 @@ disas_ret apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t
                     end += 2;
                     print_jump_target(end + offs, program_len);
                     bprintf(", ");
-                    if (imm == JDNSQMATCH_EXT_OPCODE || imm == JDNSQMATCHSAFE_EXT_OPCODE) {
+                    if (imm == JDNSQMATCH_EXT_OPCODE || imm == JDNSQMATCHSAFE_EXT_OPCODE ||
+                        imm == JDNSQMATCH1_EXT_OPCODE || imm == JDNSQMATCHSAFE1_EXT_OPCODE) {
                         print_qtype(qtype1);
                     } else if (imm == JDNSQMATCH2_EXT_OPCODE || imm == JDNSQMATCHSAFE2_EXT_OPCODE) {
                         print_qtype(qtype1);
