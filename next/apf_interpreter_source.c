@@ -148,9 +148,9 @@ static int do_apf_run(apf_context* ctx) {
     // upper bound on the number of instructions in the program.
     u32 instructions_remaining = ctx->program_len;
 
-    // APFv6 requires at least 5 u32 counters at the end of ram, this makes counter[-5]++ valid
+    // APFv6.1 requires at least 6 u32 counters at the end of ram, this makes counter[-6]++ valid
     // This cannot wrap due to previous check, that enforced program_len & ram_len < 2GiB.
-    if (ctx->program_len + 20 > ctx->ram_len) return EXCEPTION;
+    if (ctx->program_len + 24 > ctx->ram_len) return EXCEPTION;
 
     // Only populate if packet long enough, and IP version is IPv4.
     // Note: this doesn't actually check the ethertype...
