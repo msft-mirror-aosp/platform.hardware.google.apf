@@ -316,6 +316,25 @@ static int do_apf_run(apf_context* ctx) {
             if (matched ^ !reg_num) ctx->pc += imm;
             break;
           }
+          case JBSPTRMATCH_OPCODE: {
+            u32 ofs = DECODE_U8();    // 2nd imm, at worst 5 bytes past prog_len
+            u8 cmp_imm = DECODE_U8(); // 3rd imm, at worst 6 bytes past prog_len
+            u8 cnt = (cmp_imm >> 4) + 1; // 1..16 bytestrings to match
+            u8 len = (cmp_imm & 15) + 1; // 1..16 bytestring length
+            const u32 last_packet_offs = ofs + len - 1;  // min 0+1-1=0, max 255+16-1=270
+            bool matched = false;
+            // imm is jump target offset.
+            // [ofs..last_packet_offs] are packet bytes to compare.
+            ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
+            // cnt underflow on final iteration not an issue as not used after loop.
+            // 4th (through max 19th) u8 immediates, this reaches at most 22 bytes past prog_len
+            // This assumes min ram size of 529 bytes, where APFv6.1 has min ram size of 3000
+            // the +3 is to skip over the APFv6 'datajmp' instruction, while 2* to have access to 526 bytes,
+            // Primary purpose is for mac (6) & ipv6 (16) addresses, so even offsets should be easy...
+            while (cnt--) matched |= !memcmp(ctx->program + 3 + 2 * DECODE_U8(), ctx->packet + ofs, len);
+            if (matched ^ !reg_num) ctx->pc += imm;
+            break;
+          }
           // There is a difference in APFv4 and APFv6 arithmetic behaviour!
           // APFv4:  R[0] op= Rbit ? R[1] : imm;  (and it thus doesn't make sense to have R=1 && len_field>0)
           // APFv6+: REG  op= len_field ? imm : OTHER_REG;  (note: this is *DIFFERENT* with R=1 len_field==0)

@@ -268,6 +268,16 @@ typedef union {
 
 #define JNSET_OPCODE 26 /* JSET with reverse condition (jump if no bits set) */
 
+/* APFv6.1: Compare byte sequence [R=0 not] equal, e.g. "jbsptrne 22,16,label,<dataptr>"
+ * imm1 is jmp target
+ * imm2(u8) is offset [0..255] into packet
+ * imm3(u8) is (count - 1) * 16 + (compare_len - 1), thus both count & compare_len are in [1..16]
+ * which is followed by compare_len u8 'even offset' ptrs into max 526 byte data section to compare
+ * against - ie. they are multipied by 2 and have 3 added to them (to skip over 'datajmp u16')
+ * Warning: do not specify the same byte sequence multiple times.
+ */
+#define JBSPTRMATCH_OPCODE 27
+
 /* ---------------------------------------------------------------------------------------------- */
 
 /* Extended opcodes. */
@@ -889,6 +899,25 @@ static int do_apf_run(apf_context* ctx) {
                 /* skip past comparison bytes */
                 ctx->pc += len;
             }
+            if (matched ^ !reg_num) ctx->pc += imm;
+            break;
+          }
+          case JBSPTRMATCH_OPCODE: {
+            u32 ofs = DECODE_U8();    /* 2nd imm, at worst 5 bytes past prog_len */
+            u8 cmp_imm = DECODE_U8(); /* 3rd imm, at worst 6 bytes past prog_len */
+            u8 cnt = (cmp_imm >> 4) + 1; /* 1..16 bytestrings to match */
+            u8 len = (cmp_imm & 15) + 1; /* 1..16 bytestring length */
+            const u32 last_packet_offs = ofs + len - 1;  /* min 0+1-1=0, max 255+16-1=270 */
+            Boolean matched = False;
+            /* imm is jump target offset. */
+            /* [ofs..last_packet_offs] are packet bytes to compare. */
+            ASSERT_IN_PACKET_BOUNDS(last_packet_offs);
+            /* cnt underflow on final iteration not an issue as not used after loop. */
+            /* 4th (through max 19th) u8 immediates, this reaches at most 22 bytes past prog_len */
+            /* This assumes min ram size of 529 bytes, where APFv6.1 has min ram size of 3000 */
+            /* the +3 is to skip over the APFv6 'datajmp' instruction, while 2* to have access to 526 bytes, */
+            /* Primary purpose is for mac (6) & ipv6 (16) addresses, so even offsets should be easy... */
+            while (cnt--) matched |= !memcmp(ctx->program + 3 + 2 * DECODE_U8(), ctx->packet + ofs, len);
             if (matched ^ !reg_num) ctx->pc += imm;
             break;
           }
