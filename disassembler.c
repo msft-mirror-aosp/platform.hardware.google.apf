@@ -276,9 +276,9 @@ disas_ret apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t
         case AND_OPCODE: {
             PRINT_OPCODE();
             if (is_v6) {
-                bprintf(reg_num == 0 ? "r0, " : "r1, ");
+                bprintf("r%d, ", reg_num);
                 if (!imm) {
-                    bprintf(reg_num == 1 ? "r0, " : "r1, ");
+                    bprintf("r%d", 1 - reg_num);
                 } else {
                     bprintf("%d", signed_imm);
                 }
