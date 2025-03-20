@@ -212,6 +212,16 @@ typedef union {
 
 #define JNSET_OPCODE 26 // JSET with reverse condition (jump if no bits set)
 
+/* APFv6.1: Compare byte sequence [R=0 not] equal, e.g. "jbsptrne 22,16,label,<dataptr>"
+ * imm1 is jmp target
+ * imm2(u8) is offset [0..255] into packet
+ * imm3(u8) is (count - 1) * 16 + (compare_len - 1), thus both count & compare_len are in [1..16]
+ * which is followed by compare_len u8 'even offset' ptrs into max 526 byte data section to compare
+ * against - ie. they are multipied by 2 and have 3 added to them (to skip over 'datajmp u16')
+ * Warning: do not specify the same byte sequence multiple times.
+ */
+#define JBSPTRMATCH_OPCODE 27
+
 /* ---------------------------------------------------------------------------------------------- */
 
 // Extended opcodes.
