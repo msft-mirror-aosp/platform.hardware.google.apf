@@ -222,6 +222,23 @@ typedef union {
  */
 #define JBSPTRMATCH_OPCODE 27
 
+/* APFv6.1: Bytecode optimized allocate | transmit instruction.
+ * R=1 -> allocate(266 + imm * 8)
+ * R=0 -> transmit
+ *   immlen=0 -> no checksum offload (transmit ip_ofs=255)
+ *   immlen>0 -> with checksum offload (transmit(udp) ip_ofs=14 ...)
+ *     imm & 7 | type of offload      | ip_ofs | udp | csum_start  | csum_ofs      | partial_csum |
+ *         0   | ip4/udp              |   14   |  X  | 14+20-8 =26 | 14+20   +6=40 |   imm >> 3   |
+ *         1   | ip4/tcp              |   14   |     | 14+20-8 =26 | 14+20  +10=44 |     --"--    |
+ *         2   | ip4/icmp             |   14   |     | 14+20   =34 | 14+20   +2=36 |     --"--    |
+ *         3   | ip4/routeralert/icmp |   14   |     | 14+20+4 =38 | 14+20+4 +2=40 |     --"--    |
+ *         4   | ip6/udp              |   14   |  X  | 14+40-32=22 | 14+40   +6=60 |     --"--    |
+ *         5   | ip6/tcp              |   14   |     | 14+40-32=22 | 14+40  +10=64 |     --"--    |
+ *         6   | ip6/icmp             |   14   |     | 14+40-32=22 | 14+40   +2=56 |     --"--    |
+ *         7   | ip6/routeralert/icmp |   14   |     | 14+40-32=22 | 14+40+8 +2=64 |     --"--    |
+ */
+#define ALLOC_XMIT_OPCODE 28
+
 /* ---------------------------------------------------------------------------------------------- */
 
 // Extended opcodes.

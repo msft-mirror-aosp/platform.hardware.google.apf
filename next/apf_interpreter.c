@@ -278,6 +278,23 @@ typedef union {
  */
 #define JBSPTRMATCH_OPCODE 27
 
+/* APFv6.1: Bytecode optimized allocate | transmit instruction.
+ * R=1 -> allocate(266 + imm * 8)
+ * R=0 -> transmit
+ *   immlen=0 -> no checksum offload (transmit ip_ofs=255)
+ *   immlen>0 -> with checksum offload (transmit(udp) ip_ofs=14 ...)
+ *     imm & 7 | type of offload      | ip_ofs | udp | csum_start  | csum_ofs      | partial_csum |
+ *         0   | ip4/udp              |   14   |  X  | 14+20-8 =26 | 14+20   +6=40 |   imm >> 3   |
+ *         1   | ip4/tcp              |   14   |     | 14+20-8 =26 | 14+20  +10=44 |     --"--    |
+ *         2   | ip4/icmp             |   14   |     | 14+20   =34 | 14+20   +2=36 |     --"--    |
+ *         3   | ip4/routeralert/icmp |   14   |     | 14+20+4 =38 | 14+20+4 +2=40 |     --"--    |
+ *         4   | ip6/udp              |   14   |  X  | 14+40-32=22 | 14+40   +6=60 |     --"--    |
+ *         5   | ip6/tcp              |   14   |     | 14+40-32=22 | 14+40  +10=64 |     --"--    |
+ *         6   | ip6/icmp             |   14   |     | 14+40-32=22 | 14+40   +2=56 |     --"--    |
+ *         7   | ip6/routeralert/icmp |   14   |     | 14+40-32=22 | 14+40+8 +2=64 |     --"--    |
+ */
+#define ALLOC_XMIT_OPCODE 28
+
 /* ---------------------------------------------------------------------------------------------- */
 
 /* Extended opcodes. */
@@ -966,13 +983,16 @@ static int do_apf_run(apf_context* ctx) {
                 break;
               }
               case ALLOCATE_EXT_OPCODE:
+              do_allocate:
                 ASSERT_RETURN(ctx->tx_buf == NULL);
-                if (reg_num == 0) {
+                if (opcode == ALLOC_XMIT_OPCODE) {
+                    ctx->tx_buf_len = 266 + 8 * imm;
+                } else if (reg_num == 0) {
                     ctx->tx_buf_len = REG;
                 } else {
                     ctx->tx_buf_len = decode_be16(ctx); /* 2nd imm, at worst 6 B past prog_len */
                 }
-                /* checksumming functions requires minimum 266 byte buffer for correctness */
+                /* checksumming functions require minimum 266 byte buffer for correctness */
                 if (ctx->tx_buf_len < 266) ctx->tx_buf_len = 266;
                 ctx->tx_buf = apf_allocate_buffer(ctx->caller_ctx, ctx->tx_buf_len);
                 if (!ctx->tx_buf) {  /* allocate failure */
@@ -983,15 +1003,38 @@ static int do_apf_run(apf_context* ctx) {
                 memset(ctx->tx_buf, 0, ctx->tx_buf_len);
                 ctx->mem.named.tx_buf_offset = 0;
                 break;
-              case TRANSMIT_EXT_OPCODE: {
+              case TRANSMIT_EXT_OPCODE:
+              do_transmit: {
                 /* tx_buf_len cannot be large because we'd run out of RAM, */
                 /* so the above unsigned comparison effectively guarantees casting pkt_len */
                 /* to a signed value does not result in it going negative. */
-                u8 ip_ofs = DECODE_U8();              /* 2nd imm, at worst 5 B past prog_len */
-                u8 csum_ofs = DECODE_U8();            /* 3rd imm, at worst 6 B past prog_len */
+                u8 ip_ofs;
+                u8 csum_ofs;
                 u8 csum_start = 0;
                 u16 partial_csum = 0;
+                Boolean udp = reg_num;
                 u32 pkt_len = ctx->mem.named.tx_buf_offset;
+                if (opcode != ALLOC_XMIT_OPCODE) {
+                    /* parse TRANSMIT_EXT_OPCODE arguments */
+                    ip_ofs = DECODE_U8();                 /* 2nd imm, at worst 5 B past prog_len */
+                    csum_ofs = DECODE_U8();               /* 3rd imm, at worst 6 B past prog_len */
+                    if (csum_ofs < 255) {
+                        csum_start = DECODE_U8();         /* 4th imm, at worst 7 B past prog_len */
+                        partial_csum = decode_be16(ctx);  /* 5th imm, at worst 9 B past prog_len */
+                    }
+                } else if (imm_len) {
+                    /* parse ALLOC_XMIT_OPCODE (R=0) immediate */
+                    static const u8 auto_csum_start[8] = { 26, 26, 34, 38, 22, 22, 22, 22 };
+                    static const u8 auto_csum_ofs[8] =   { 40, 44, 36, 40, 60, 64, 56, 64 };
+                    ip_ofs = 14;
+                    csum_ofs = auto_csum_ofs[imm & 7];
+                    csum_start = auto_csum_start[imm & 7];
+                    partial_csum = imm >> 3;
+                    udp = !(imm & 3);
+                } else {
+                    /* ALLOC_XMIT_OPCODE (R=0) with no immediate */
+                    ip_ofs = csum_ofs = 255;
+                }
                 ASSERT_RETURN(ctx->tx_buf);
                 /* If pkt_len > allocate_buffer_len, it means sth. wrong */
                 /* happened and the tx_buf should be deallocated. */
@@ -999,14 +1042,9 @@ static int do_apf_run(apf_context* ctx) {
                     do_discard_buffer(ctx);
                     return EXCEPTION;
                 }
-                if (csum_ofs < 255) {
-                    csum_start = DECODE_U8();         /* 4th imm, at worst 7 B past prog_len */
-                    partial_csum = decode_be16(ctx);  /* 5th imm, at worst 9 B past prog_len */
-                }
                 {
                     int dscp = apf_internal_csum_and_return_dscp(ctx->tx_buf, (s32)pkt_len, ip_ofs,
-                                                    partial_csum, csum_start, csum_ofs,
-                                                    (Boolean)reg_num);
+                                                    partial_csum, csum_start, csum_ofs, udp);
                     int ret = apf_internal_do_transmit_buffer(ctx, pkt_len, dscp);
                     if (ret) { counter[-4]++; return EXCEPTION; } /* transmit failure */
                 }
@@ -1174,6 +1212,9 @@ static int do_apf_run(apf_context* ctx) {
             }
             break;
           }
+          case ALLOC_XMIT_OPCODE:
+            if (reg_num) goto do_allocate; else goto do_transmit;
+            break;
           default:  /* Unknown opcode */
             return EXCEPTION;  /* Bail out */
         }
