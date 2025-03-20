@@ -279,12 +279,16 @@ disas_ret apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t
                 bprintf("r%d, ", reg_num);
                 if (!imm) {
                     bprintf("r%d", 1 - reg_num);
+                } else if (opcode == AND_OPCODE) {
+                    bprintf("0x%x", signed_imm);
                 } else {
                     bprintf("%d", signed_imm);
                 }
             } else {
                 if (reg_num) {
                     bprintf("r0, r1");
+                } else if (opcode == AND_OPCODE) {
+                    bprintf("r0, 0x%x", imm);
                 } else {
                     bprintf("r0, %u", imm);
                 }
@@ -299,6 +303,8 @@ disas_ret apf_disassemble(const uint8_t* program, uint32_t program_len, uint32_t
                 bprintf("r0, r1");
             } else if (!imm && opcode == DIV_OPCODE) {
                 bprintf("pass (div 0)");
+            } else if (opcode == OR_OPCODE) {
+                bprintf("r0, 0x%x", imm);
             } else {
                 bprintf("r0, %u", imm);
             }
