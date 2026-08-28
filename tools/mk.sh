@@ -11,8 +11,8 @@ set -u
 declare -r NL='../../../../external/libnl'
 declare -r NLIB="${NL}/lib"
 
-for vendor in brcm qcom; do
-  gcc -Wall -Werror -D__unused= -I/usr/include/libnl3 "${vendor}_apf_tool.c" -o "${vendor}_apf_tool.exe" -lnl-3 -lnl-genl-3
+for tool in brcm_apf_tool qcom_apf_tool apf_tool; do
+  gcc -Wall -Werror -D__unused= -I/usr/include/libnl3 "${tool}.c" -o "${tool}.exe" -lnl-3 -lnl-genl-3
   aarch64-linux-gnu-gcc -static \
     -D__unused='__attribute__((unused))' \
     -D_GNU_SOURCE \
@@ -36,7 +36,7 @@ for vendor in brcm qcom; do
     "${NLIB}/object.c" \
     "${NLIB}/socket.c" \
     "${NLIB}/utils.c" \
-    "${vendor}_apf_tool.c" -o "${vendor}_apf_tool"
+    "${tool}.c" -o "${tool}"
 done
 
 # /usr/lib/gcc-cross/aarch64-linux-gnu/14/../../../../aarch64-linux-gnu/bin/ld: /tmp/ccYCWTVb.o: in function `nl_addr_info':
