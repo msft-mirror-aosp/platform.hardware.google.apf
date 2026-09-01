@@ -46,7 +46,6 @@ cc_test_host {
         "apf_checksum_test.cc",
     ],
     cflags: [
-        "-Wall",
         "-Wno-unused-function",
     ],
     stl: "c++_static",
@@ -58,7 +57,6 @@ cc_test_host {
         "apf_dns_test.cc",
     ],
     cflags: [
-        "-Wall",
         "-Wno-unused-function",
     ],
     stl: "c++_static",
