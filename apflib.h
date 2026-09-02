@@ -15,6 +15,9 @@
  */
 
 #pragma once
+
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,6 +32,29 @@ int apf_run_generic(const uint32_t apf_version,
                     const uint8_t *packet,
                     const uint32_t packet_len,
                     const uint32_t filter_age_16384ths);
+
+struct apf_fw_ctx;
+struct apf_state;
+
+struct apf_state *apf_session_create(struct apf_fw_ctx *ctx,
+                                     const uint8_t *program,
+                                     uint32_t program_len,
+                                     uint32_t ram_len);
+
+int apf_session_run_packet(struct apf_state *state,
+                           const uint8_t *packet,
+                           uint32_t packet_len,
+                           uint32_t filter_age_16384ths);
+
+void apf_session_suspend(struct apf_state *state);
+
+void apf_session_resume(struct apf_state *state);
+
+int apf_session_read_data(struct apf_state *state,
+                          uint8_t *buf,
+                          uint32_t length);
+
+void apf_session_destroy(struct apf_state *state);
 
 #ifdef __cplusplus
 }
