@@ -62,12 +62,63 @@
 #undef apf_process_timer_event
 #undef apf_run_packet
 
+#include <stddef.h>
 #include "apflib.h"
 
 void apf_test_set_time_in_ticks(uint32_t ticks);
 void apf_test_clear_time_in_ticks(void);
 
 #define EXCEPTION 2
+
+struct apf_state *apf_session_create(struct apf_fw_ctx *ctx,
+                                     const uint8_t *program,
+                                     uint32_t program_len,
+                                     uint32_t ram_len) {
+    if (program_len > ram_len) return NULL;
+
+    struct apf_state *state = apfnext__apf_enable(ctx, ram_len);
+    if (!state) return NULL;
+
+    apf_test_set_time_in_ticks(0);
+    if (apfnext__apf_write(state, -1, program, program_len)) {
+        apf_test_clear_time_in_ticks();
+        apf_session_destroy(state);
+        return NULL;
+    }
+    apf_test_clear_time_in_ticks();
+
+    return state;
+}
+
+int apf_session_run_packet(struct apf_state *state,
+                           const uint8_t *packet,
+                           uint32_t packet_len,
+                           uint32_t filter_age_16384ths) {
+    apf_test_set_time_in_ticks(filter_age_16384ths);
+    int result = apfnext__apf_run_packet(state, packet, packet_len);
+    apf_test_clear_time_in_ticks();
+    return result;
+}
+
+void apf_session_suspend(struct apf_state *state) {
+    apfnext__apf_suspend(state);
+}
+
+void apf_session_resume(struct apf_state *state) {
+    apfnext__apf_resume(state);
+}
+
+int apf_session_read_data(struct apf_state *state,
+                          uint8_t *buf,
+                          uint32_t length) {
+    const uint32_t actual_ram_len = apfnext__apf_get_ram_size(state);
+    if (length > actual_ram_len) return -1;
+    return apfnext__apf_read(state, actual_ram_len - length, buf, length);
+}
+
+void apf_session_destroy(struct apf_state *state) {
+    apfnext__apf_disable(state);
+}
 
 static int apfnext_run(struct apf_fw_ctx *ctx, uint8_t *program,
                        uint32_t program_len, uint32_t ram_len,
@@ -76,27 +127,29 @@ static int apfnext_run(struct apf_fw_ctx *ctx, uint8_t *program,
     if (program_len > ram_len) return EXCEPTION;
     const uint32_t data_len = ram_len - program_len;
     uint8_t * const data = program + program_len;
-    int result = EXCEPTION;
 
-    struct apf_state *state = apfnext__apf_enable(ctx, ram_len);
+    struct apf_state *state = apf_session_create(ctx, program, program_len, ram_len);
     if (!state) return EXCEPTION;
 
     const uint32_t actual_ram_len = apfnext__apf_get_ram_size(state);
-    if (actual_ram_len < ram_len) goto cleanup;
+    if (actual_ram_len < ram_len) {
+        apf_session_destroy(state);
+        return EXCEPTION;
+    }
 
     const uint32_t data_offset = actual_ram_len - data_len;
 
-    apf_test_set_time_in_ticks(0);
-    if (apfnext__apf_write(state, -1, program, program_len)) goto cleanup;
-    if (data_len && apfnext__apf_write(state, (int32_t)data_offset, data, data_len)) goto cleanup;
+    if (data_len && apfnext__apf_write(state, (int32_t)data_offset, data, data_len)) {
+        apf_session_destroy(state);
+        return EXCEPTION;
+    }
 
-    apf_test_set_time_in_ticks(filter_age_16384ths);
-    result = apfnext__apf_run_packet(state, packet, packet_len);
-    if (data_len) apfnext__apf_read(state, data_offset, data, data_len);
+    int result = apf_session_run_packet(state, packet, packet_len, filter_age_16384ths);
+    if (data_len) {
+        apf_session_read_data(state, data, data_len);
+    }
 
-cleanup:
-    apf_test_clear_time_in_ticks();
-    apfnext__apf_disable(state);
+    apf_session_destroy(state);
     return result;
 }
 
